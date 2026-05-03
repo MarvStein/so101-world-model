@@ -1,0 +1,19 @@
+data_transforms:
+  - name: CosmosProcessImage
+    targets: [workspace_rgb]
+    resize_sizes: ${policy_io.img_resize_sizes}
+
+  - name: ConvertLowdimRepr
+    targets: [action/eef_pose_lowdim]
+    additional_data: { relative_base_value: obs/eef_pose_lowdim }
+    relative_base_value_idx: -1
+
+  - name: Flatten
+    targets: [lowdim]
+
+  - name: Concat
+    targets: ${policy_io.concat_groups.action/lowdim_concat}
+    out_key: "action/lowdim_concat"
+  - name: Concat
+    targets: ${policy_io.concat_groups.obs/lowdim_concat}
+    out_key: "obs/lowdim_concat"
