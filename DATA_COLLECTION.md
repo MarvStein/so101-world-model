@@ -1,3 +1,4 @@
+# Dataset Recording Tutorial
 This is a tutorial on how to do data collection for the SO101 robot.
 
 1. Create a huggingface account if you don't have one yet.
@@ -28,14 +29,6 @@ lerobot-record --robot.type=so101_follower \
 ```
 
 
-
-
-
-
-
-
-
-
 ## MISC commands
 
 `lerobot-find-port`
@@ -52,6 +45,8 @@ lerobot-record --robot.type=so101_follower \
 
 ```
 lerobot-teleoperate \
+    --robot.calibration_dir=./calibration \
+    --teleop.calibration_dir=./calibration \
     --robot.type=so101_follower \
     --robot.port=/dev/ttyACM1 \
     --robot.id=follower \

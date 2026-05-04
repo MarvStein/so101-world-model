@@ -1,0 +1,33 @@
+defaults:
+  - transform@_here_: lerobot_to_${policy_io}
+  - _self_
+
+data_components:
+  workspace_rgb:
+    obs_type: ${ObsType:RGB}
+    repr: null
+  joint_state_lowdim:
+    obs_type: ${ObsType:JOINT_POS}
+    repr: ${LieRepr:ABSOLUTE}
+  joint_action_lowdim:
+    obs_type: ${ObsType:JOINT_POS}
+    repr: ${LieRepr:ABSOLUTE}
+  # language_instruction:
+  #   obs_type: ${ObsType:LANGUAGE}
+  #   repr: null
+  # language_embedding:
+  #   obs_type: ${ObsType:LANGUAGE_EMBEDDING}
+  #   repr: null
+
+dataset:
+  _target_: cosmos_predict2.data.action.dataset_action.MimicDataset
+  _convert_: partial
+  data_dir: /Users/dragos/ETH/FS2026/RL/robot-learning-fs26/data/lerobot
+  timestep_anchor: workspace_rgb
+  data_components: ${..data_components}
+  data_transforms: ${..data_transforms}
+  source_component_names: ${..source_component_names}
+  policy_io: ${policy_io.policy_io}
+  should_include_padded_tails: True
+  seed: 42
+  num_val_episodes: 20

@@ -1,0 +1,4 @@
+defaults:
+  - dataset: lerobot
+  - policy_io: lerobot
+  - _self_
