@@ -122,6 +122,7 @@ lerobot_cfg["optimizer"]["lr"] = 1e-4
 lerobot_cfg["job"]["group"] = "lerobot"
 lerobot_cfg["job"]["name"] = "w2a_lerobot_v2w_pretrained_cosmos_lr1.000e-04_layer20_bsz1"
 lerobot_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=1)}
+# lerobot_cfg["trainer"]["run_validation"] = False
 
 cs.store(
     group="experiment",

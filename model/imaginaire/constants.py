@@ -83,7 +83,7 @@ def _get_cosmos_predict2_video2world_model_dir(
 ) -> str:
     assert model_size == "2B"
     assert model_type == "Video2World"
-    return f"{CHECKPOINTS_DIR}/video_backbone/"
+    return f"{CHECKPOINTS_DIR}/video_backbone"
 
 
 def get_cosmos_predict2_video2world_tokenizer(
