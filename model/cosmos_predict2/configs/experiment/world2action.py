@@ -112,4 +112,22 @@ for video_ckpt, data_config, xattn_layer_idx, lr, bsz in it.product(
         node=cfg,
     )
 
+# Add manual lerobot experiment
+lerobot_cfg = copy.deepcopy(BASE)
+lerobot_cfg["defaults"][0]["override /model"] = "v2w_pretrained_cosmos"
+lerobot_cfg["defaults"][1]["override /world2action_pipe"] = "lerobot"
+lerobot_cfg["defaults"][2]["override /data_config"] = "lerobot"
+lerobot_cfg["model"]["config"]["pipe_config"]["xattn_layer_idx"] = 20
+lerobot_cfg["optimizer"]["lr"] = 1e-4
+lerobot_cfg["job"]["group"] = "lerobot"
+lerobot_cfg["job"]["name"] = "w2a_lerobot_v2w_pretrained_cosmos_lr1.000e-04_layer20_bsz1"
+lerobot_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=1)}
+
+cs.store(
+    group="experiment",
+    package="_global_",
+    name="w2a_lerobot_v2w_pretrained_cosmos_lr1.000e-04_layer20_bsz1",
+    node=lerobot_cfg,
+)
+
 # TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=7200 CUDA_DEVICE_MAX_CONNECTIONS=1 NVTE_FUSED_ATTN=0 torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment=...

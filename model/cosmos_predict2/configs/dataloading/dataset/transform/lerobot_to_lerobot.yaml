@@ -17,3 +17,5 @@ data_transforms:
   - name: Concat
     targets: ${policy_io.concat_groups.obs/lowdim_concat}
     out_key: "obs/lowdim_concat"
+
+source_component_names: {}

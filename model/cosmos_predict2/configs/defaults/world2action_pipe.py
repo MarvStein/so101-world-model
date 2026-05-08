@@ -37,6 +37,21 @@ ACTION_DECODER_NETS = {
         pair_timestep_feature_rank=1024,
         sac_config=SACConfig(mode="none", every_n_blocks=1),
     ),
+    "lerobot": L(VarNoiseWorld2ActionDIT)(
+        max_horizon=16,
+        in_channels=10,
+        out_channels=10,
+        model_channels=1024,
+        num_blocks=24,
+        num_heads=8,
+        mlp_ratio=4.0,
+        atten_backend="flash_attn_no_cp",
+        crossattn_emb_channels=2048,
+        use_adaln_lora=True,
+        adaln_lora_dim=128,
+        pair_timestep_feature_rank=1024,
+        sac_config=SACConfig(mode="none", every_n_blocks=1),
+    ),
 }
 
 
