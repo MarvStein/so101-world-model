@@ -4,7 +4,38 @@ We have to do Video Model Finetuning with the LeRobot dataset and then Action De
 
 ## Video Model Finetuning
 
-- [ ] Finish data_preprocessing/video/process_lerobot_video.py to download the HF datasets and structure it under a dataset folder in the way that the data_preprocessing/video/get_t5_embeddings.py needs it -> put the mp4 files under video/ and write task text under metas/*.txt
+- [x] Finish data_preprocessing/video/process_lerobot_video.py to download the HF datasets and structure it under a dataset folder in the way that the data_preprocessing/video/get_t5_embeddings.py needs it -> put the mp4 files under video/ and write task text under metas/*.txt
+  - the script is DONE and the following commands need to be run to build the dataset:
+  ```bash
+  # task 1:
+  Task 1:
+  python data_preprocessing/video/process_lerobot_video.py --repo-id klucny/rl_eth --task 1 --default-lang "push the white polyhedron into the goal circle while staying in the corridor"
+  # task 2:
+  python data_preprocessing/video/process_lerobot_video.py --repo-id klucny/rl_eth_task2 --task 2 --default-lang "push the white polyhedron into the goal circle while avoiding the red obstacle"
+  ```
+  Then you will have this structure:
+  ```
+  <this-repo>
+  ├── data
+  │   ├── task1
+  │   │   ├── video
+  │   │   │   ├── episode_000.mp4
+  │   │   │   ├── ...
+  │   │   │   ├── episode_228.mp4
+  │   │   ├── metas
+  │   │   │   ├── episode_000.txt
+  │   │   │   ├── ...
+  │   │   │   ├── episode_228.txt
+  │   ├── task2
+  │   │   ├── video
+  │   │   │   ├── episode_000.mp4
+  │   │   │   ├── ...
+  │   │   │   ├── episode_125.mp4
+  │   │   ├── metas
+  │   │   │   ├── episode_000.txt
+  │   │   │   ├── ...
+  │   │   │   ├── episode_125.txt
+  ```
   - [ ] Once this is done, you should be able to run data_preprocessing/video/get_t5_embeddings.py with the dataset path pointing to where data_preprocessing/video/process_lerobot_video.py built it 
   ```bash
     cd data_preprocessing/video/
