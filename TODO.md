@@ -4,7 +4,7 @@ We have to do Video Model Finetuning with the LeRobot dataset and then Action De
 
 ## Video Model Finetuning
 
-- [ ] Finish data_preprocessing/video/process_lerobot_video.py to download the HF datasets and structure it under a dataset folder in the way that the data_preprocessing/video/get_t5_embeddings.py needs it -> put the mp4 files under video/ and write task text under metas/*.txt @klucny
+- [ ] Finish data_preprocessing/video/process_lerobot_video.py to download the HF datasets and structure it under a dataset folder in the way that the data_preprocessing/video/get_t5_embeddings.py needs it -> put the mp4 files under video/ and write task text under metas/*.txt
   - [ ] Once this is done, you should be able to run data_preprocessing/video/get_t5_embeddings.py with the dataset path pointing to where data_preprocessing/video/process_lerobot_video.py built it 
   ```bash
     cd data_preprocessing/video/
