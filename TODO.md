@@ -41,8 +41,8 @@ We have to do Video Model Finetuning with the LeRobot dataset and then Action De
     cd data_preprocessing/video/
     python get_t5_embeddings.py --dataset_path /path/to/dataset/
   ```
-- [ ] Create the video finetuning config by adding a lerobot entry to the train_datasets in model/cosmos_predict2/configs/defaults/data_video.py with the right dataset directory path and make sure it's adapted since we used 10 fps. @klucny
-  - [ ] We might have to add the hyperparameters manually to model/cosmos_predict2/configs/experiment/video2world.py for the SO101 and taking into acount the 10fps
+- [x] Create the video finetuning config by adding a lerobot entry to the train_datasets in model/cosmos_predict2/configs/defaults/data_video.py with the right dataset directory path and make sure it's adapted since we used 10 fps. @klucny
+  - [x] We might have to add the hyperparameters manually to model/cosmos_predict2/configs/experiment/video2world.py for the SO101 and taking into acount the 10fps
 
 For the finetuning, once all the TODOs are completed, we have to finetune by runing:
 ```bash

@@ -118,3 +118,25 @@ for rank in ranks:
                     name=name,
                     node=cfg,
                 )
+
+so101_cfg = copy.deepcopy(BASE)
+so101_cfg["defaults"][1]["override /video_dataset_train"] = "lerobot-so101"
+so101_cfg["defaults"][2]["override /video_dataset_val"] = "lerobot-so101"
+so101_cfg["optimizer"]["lr"] = 1e-4
+so101_cfg["job"]["name"] = "v2w_lerobot-so101_custom"
+so101_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=32)}
+so101_cfg["model"]["config"].update(dict(
+    train_architecture="lora",
+    lora_rank=256,
+    lora_alpha=32,
+    init_lora_weights=True,
+    lora_target_modules="q_proj,k_proj,v_proj,output_proj,x_embedder.proj.1,linear_1,linear_2,mlp.layer1,mlp.layer2",
+))
+so101_cfg["trainer"]["callbacks"]["video_eval"]["fuse_lora"] = True
+
+cs.store(
+    group="experiment",
+    package="_global_",
+    name="v2w_lerobot-so101_custom",
+    node=so101_cfg,
+)
