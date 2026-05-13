@@ -88,7 +88,7 @@ def main() -> None:
     print(f"Found {len(episodes_df1)} episodes.")
 
     print(f"Downloading klucny/rl_eth_task2 from HuggingFace Hub...")
-    local_dir = snapshot_download(repo_id="klucny/rl_eth", repo_type="dataset")
+    local_dir = snapshot_download(repo_id="klucny/rl_eth_task2", repo_type="dataset")
     raw_dir2 = pathlib.Path(local_dir)
 
     episodes_df2 = read_episodes_df(raw_dir2)
