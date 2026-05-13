@@ -41,7 +41,12 @@ BASE: dict = dict(
         name="",
     ),
     model=dict(
-        config=dict()
+        config=dict(
+            pipe_config=dict(
+                ema=dict(enabled=False),
+                guardrail_config=dict(enabled=False),
+            ),
+        )
     ),
     model_parallel=dict(
         cpu_offloading_activations=False,
