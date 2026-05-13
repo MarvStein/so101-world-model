@@ -61,7 +61,7 @@ train_datasets: dict[str, Dataset_] = {
     ),
 
     "lerobot-so101": L(Dataset)(
-        dataset_dir="./data/lerobot", # TODO: fill in; Base path to the dataset directory containing subdirectories for video files and t5 embeddings
+        dataset_dir="home/ubuntu/workspace/so101-world-model/data/lerobot", # TODO: fill in; Base path to the dataset directory containing subdirectories for video files and t5 embeddings
         num_frames=61, # Number of frames (61) to load per sequence - the length of each video clip
         video_size=[1030,950], # TODO: fill in; Target resolution [Height, Width] for resizing video frames (currently set to ... which means it's not specified)
         data_fps=10.0,
