@@ -124,7 +124,6 @@ def main() -> None:
         dst_txt = output_dir / "metas" / f"episode_{ep_idx:03d}.txt"
         dst_txt.write_text(task_text, encoding="utf-8")
     
-    """
     for _, ep in tqdm(episodes_df2.iterrows(), total=len(episodes_df2), desc="episodes"):
         ep_idx = int(ep["episode_index"])+len(episodes_df1)
         chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
@@ -151,7 +150,6 @@ def main() -> None:
         task_text = episode_task_text(2)
         dst_txt = output_dir / "metas" / f"episode_{ep_idx:03d}.txt"
         dst_txt.write_text(task_text, encoding="utf-8")
-    """
 
     print(f"\nDone. {len(episodes_df1)+len(episodes_df2)} episodes written to {output_dir}")
 
