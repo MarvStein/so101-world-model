@@ -124,7 +124,7 @@ so101_cfg["defaults"][1]["override /video_dataset_train"] = "lerobot-so101"
 so101_cfg["defaults"][2]["override /video_dataset_val"] = "lerobot-so101"
 so101_cfg["optimizer"]["lr"] = 1e-4
 so101_cfg["job"]["name"] = "v2w_lerobot-so101_custom"
-so101_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=16)}
+so101_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=32)}
 so101_cfg["model"]["config"].update(dict(
     train_architecture="lora",
     lora_rank=256,
