@@ -20,6 +20,13 @@ import cv2
 S_TO_NS = 1_000_000_000
 REPO_ROOT = pathlib.Path(__file__).parents[2]
 
+# Match the transform in data_preprocessing/video/process_lerobot_video.py:
+#   -vf "crop=1268:951:326:0,fps=10"
+VIDEO_CROP_W = 1268
+VIDEO_CROP_H = 951
+VIDEO_CROP_X = 326
+VIDEO_CROP_Y = 0
+
 
 def episode_task_text(task_id: int) -> str:
     txt_path = REPO_ROOT / f"description_task{task_id}.txt"
@@ -84,9 +91,15 @@ def process_images(
         if not ret:
             break
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        # resize: (width, height)
-        size = (640, 480)
-        frame = cv2.resize(frame, size)
+
+        # Keep action preprocessing consistent with video preprocessing crop.
+        h, w = frame.shape[:2]
+        x0 = max(0, min(VIDEO_CROP_X, w))
+        y0 = max(0, min(VIDEO_CROP_Y, h))
+        x1 = max(x0, min(x0 + VIDEO_CROP_W, w))
+        y1 = max(y0, min(y0 + VIDEO_CROP_H, h))
+        frame = frame[y0:y1, x0:x1]
+
         frames.append(frame)
     cap.release()
 
@@ -361,7 +374,7 @@ def main():
     # Mirror process_lerobot_video.py task mapping by dataset source.
     dataset_specs = [
         ("klucny/rl_eth", 1),
-        ("klucny/rl_eth_task2", 2),
+        #("klucny/rl_eth_task2", 2),
     ]
 
     episode_offset = 0
@@ -382,7 +395,7 @@ def main():
                 task_id,
                 REPO_ROOT / f"description_task{task_id}.txt",
             )
-
+        count = 0
         for _, ep in episodes_df.iterrows():
             source_ep_idx = int(ep["episode_index"])
             out_ep_idx = source_ep_idx + episode_offset
@@ -394,6 +407,9 @@ def main():
                 default_lang=task_lang,
                 output_episode_idx=out_ep_idx,
             )
+            if count == 25:
+                break
+            count += 1
 
         episode_offset += len(episodes_df)
 

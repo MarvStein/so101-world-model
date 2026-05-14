@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import pickle
 import shutil
 
 import hydra
 import numpy as np
+from omegaconf import open_dict
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -16,22 +18,54 @@ import zarr
 
 from cosmos_predict2.configs.config_video2world import get_cosmos_predict2_video2world_pipeline
 from cosmos_predict2.configs.defaults.data_action import get_data_config
+from cosmos_predict2.data.action.utils import get_paths
 from cosmos_predict2.pipelines.video2world import Video2WorldPipeline
+
+
+def ensure_episode_paths_cache(data_dir: pathlib.Path) -> None:
+    paths_cache = data_dir / "paths.pkl"
+    discovered_paths = get_paths(data_dir)
+    if discovered_paths:
+        return
+
+    # Some local conversions use episode folders without a .zarr suffix.
+    # MimicDataset only scans **/*.zarr, so build a cache explicitly.
+    episode_dirs = sorted(p for p in data_dir.glob("episode_*") if (p / ".zgroup").exists())
+    if not episode_dirs:
+        return
+
+    with paths_cache.open("wb") as f:
+        pickle.dump(episode_dirs, f)
 
 
 def load_dataset(data_config_name: str, data_dir: pathlib.Path, train: bool):
     data_config = get_data_config(data_config_name)
+    ensure_episode_paths_cache(data_dir)
+
+    dataset_cfg = data_config.dataset.dataset
+    obs_policy_io = dataset_cfg.policy_io.get("obs", {})
+    data_components = dataset_cfg.get("data_components", {})
+    # TODO is this actually true that we need to remove language embedding for precomputation?
+    # Copilot came up with this
+    if "language_embedding" in obs_policy_io and "language_embedding" not in data_components:
+        # Precompute only needs workspace RGB clips. Allow lerobot zarrs without language embeddings.
+        with open_dict(obs_policy_io):
+            del obs_policy_io["language_embedding"]
+
     return hydra.utils.instantiate(
-        data_config.dataset.dataset,
+        dataset_cfg,
         data_dir=str(data_dir),
         train=train,
         verbose=True,
     )
 
 
-def load_video2world_pipeline(checkpoint_path: str, device: str) -> Video2WorldPipeline:
+def load_video2world_pipeline(checkpoint_path: str, device: str, enable_guardrail: bool) -> Video2WorldPipeline:
+    pipe_cfg = get_cosmos_predict2_video2world_pipeline(model_size="2B", resolution="480", fps=10)
+    pipe_cfg.guardrail_config.enabled = enable_guardrail
+
     pipe = Video2WorldPipeline.from_config(
-        get_cosmos_predict2_video2world_pipeline(model_size="2B", resolution="480", fps=10),
+        pipe_cfg,
         dit_path=checkpoint_path,
         use_text_encoder=False,
         device=device,
@@ -120,13 +154,18 @@ def main() -> int:
     parser.add_argument("--num_workers", type=int, default=0, help="DataLoader workers")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite an existing cache")
+    parser.add_argument(
+        "--enable_guardrail",
+        action="store_true",
+        help="Enable guardrail loading for the Video2World pipeline (disabled by default for precompute).",
+    )
     args = parser.parse_args()
 
     data_dir = pathlib.Path(args.dataset_path)
     if not data_dir.exists():
         raise FileNotFoundError(f"Dataset directory does not exist: {data_dir}")
 
-    pipe = load_video2world_pipeline(args.video_model, args.device)
+    pipe = load_video2world_pipeline(args.video_model, args.device, args.enable_guardrail)
     splits = [True, False] if args.split == "both" else [args.split == "train"]
 
     for is_train in splits:

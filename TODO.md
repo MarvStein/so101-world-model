@@ -3,10 +3,17 @@
 We have to do Video Model Finetuning with the LeRobot dataset and then Action Decoder Pretraining. For that, we also need to setup brev completely to be able to run everything on the H100.
 
 
+## Inference
+- [ ] Write the inference pipeline that runs on a 5090
+
+
 ## Video Model Finetuning
 
-- [ ] Look into pre-computing the embedded space @jeremiasbaur
+- [-] Look into pre-computing the embedded space @jeremiasbaur
+      This is implemented but not tested yet because I first had to adapt the process_lerobot.py script to extract the action sequences. However, I ran into storage problems on the instance if I tried to script on the whole dataset of Konstantin.
+
 - [ ] Run finetuning on an instance with 8 H100s
+
 
 ### To run finetuning:
 ```bash
@@ -31,8 +38,33 @@ torchrun --nproc_per_node=<NUM_GPUS> -m scripts.train --config=cosmos_predict2/c
 - [x] data_preprocessing/action/process_lerobot.py already written to convert LeRobot to zarr
   - [ ] DO NOT FORGET: Change path to run it yourself in model/cosmos_predict2/configs/dataloading/dataset/lerobot.yaml
 - [ ] Make sure the data is adapted to remove the 6th DOF of the open/close gripper because we don't need it
+    I think this is done right?
 - [ ] Fix the in_channels / out_channels number
 - [ ] Reduce the action decoder by a factor of 10
+- [ ] Check if the language embeddings are correctly produced and passed to the action decoder / video model.
+
+To run preprocessing for action decoder training:
+
+```bash
+source .venv/bin/activate
+python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/process_lerobot.py --output-dir /home/ubuntu/workspace/so101-world-model/data/action/processed
+```
+
+Then run precomputation pipeline:
+Adapt paths!
+```bash
+deactivate
+cd model
+source .venv/bin/activate
+python scripts/precompute_video_embeddings.py \
+  --video_model /home/ubuntu/workspace/so101-world-model/model/checkpoints/posttraining/video2world/v2w_lerobot-so101_custom/checkpoints/model/iter_000004000_fused.pt \
+  --dataset_path /home/ubuntu/workspace/so101-world-model/data/action/processed/lerobot \
+  --data_config lerobot \
+  --split both \
+  --batch_size 4
+```
+
+
 
 # BACKLOG
 
