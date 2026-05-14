@@ -133,6 +133,7 @@ so101_cfg["model"]["config"].update(dict(
     lora_target_modules="q_proj,k_proj,v_proj,output_proj,x_embedder.proj.1,linear_1,linear_2,mlp.layer1,mlp.layer2",
 ))
 so101_cfg["trainer"]["callbacks"]["video_eval"]["fuse_lora"] = True
+so101_cfg["checkpoint"] = {"save_iter": 1000}
 
 cs.store(
     group="experiment",
