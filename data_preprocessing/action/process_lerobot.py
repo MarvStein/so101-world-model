@@ -16,18 +16,70 @@ from PIL import Image
 import imageio.v3 as iio
 import cv2
 
-# snapshot_download(
-#     repo_id="jere-erej/rl_eth",
-#     repo_type="dataset",
-#     local_dir="/Users/dragos/ETH/FS2026/RL/robot-learning-fs26/data"
-# )
 
 S_TO_NS = 1_000_000_000
+REPO_ROOT = pathlib.Path(__file__).parents[2]
 
-def process_images(video_path) -> np.ndarray:
+
+def episode_task_text(task_id: int) -> str:
+    txt_path = REPO_ROOT / f"description_task{task_id}.txt"
+    return txt_path.read_text(encoding="utf-8").strip()
+
+
+def extract_task_id(ep: pd.Series) -> int | None:
+    if "tasks" not in ep:
+        return None
+
+    raw = ep["tasks"]
+    if isinstance(raw, np.ndarray):
+        candidates = raw.tolist()
+    elif isinstance(raw, (list, tuple, set)):
+        candidates = list(raw)
+    else:
+        candidates = [raw]
+
+    for value in candidates:
+        match = re.search(r"task\s*_?(\d+)", str(value), re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def read_episodes_df(raw_dir: pathlib.Path) -> pd.DataFrame:
+    dfs = [
+        pd.read_parquet(p)
+        for p in sorted((raw_dir / "meta" / "episodes").glob("chunk-*/file-*.parquet"))
+    ]
+    return pd.concat(dfs, ignore_index=True).sort_values("episode_index").reset_index(drop=True)
+
+def process_images(
+    video_path: pathlib.Path,
+    start_s: float | None = None,
+    end_s: float | None = None,
+    target_len: int | None = None,
+) -> np.ndarray:
     cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"Could not open video file: {video_path}")
+
+    fps = float(cap.get(cv2.CAP_PROP_FPS))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    start_idx = 0
+    end_idx = total_frames
+
+    if fps > 0 and start_s is not None:
+        start_idx = int(round(start_s * fps))
+    if fps > 0 and end_s is not None:
+        end_idx = int(round(end_s * fps))
+
+    start_idx = max(0, min(start_idx, total_frames))
+    end_idx = max(start_idx, min(end_idx, total_frames))
+
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx)
+
     frames = []
-    while True:
+    for _ in range(start_idx, end_idx):
         ret, frame = cap.read()
         if not ret:
             break
@@ -37,19 +89,38 @@ def process_images(video_path) -> np.ndarray:
         frame = cv2.resize(frame, size)
         frames.append(frame)
     cap.release()
+
+    if len(frames) == 0:
+        raise RuntimeError(
+            f"No frames decoded for {video_path} in range "
+            f"[{start_s}, {end_s}] (frames [{start_idx}, {end_idx}))"
+        )
+
+    if target_len is not None and target_len > 0 and len(frames) != target_len:
+        logging.warning(
+            "Frame count mismatch for %s in [%s, %s]: decoded=%d, target=%d. "
+            "Resampling frames to target length.",
+            video_path,
+            start_s,
+            end_s,
+            len(frames),
+            target_len,
+        )
+        sample_idx = np.linspace(0, len(frames) - 1, target_len)
+        sample_idx = np.round(sample_idx).astype(np.int64)
+        frames = [frames[i] for i in sample_idx]
+
     return np.stack(frames).astype(np.uint8)
 
 
-def make_zarr(raw_dir, output_dir, ep, convert_degrees_to_radians=True):
-    video_path = (
-        raw_dir
-        / f"videos/observation.images.front/"
-          f"chunk-{int(ep['videos/observation.images.front/chunk_index']):03d}/"
-          f"file-{int(ep['videos/observation.images.front/file_index']):03d}.mp4"
-    )
-
-    images = process_images(video_path)
-
+def make_zarr(
+    raw_dir,
+    output_dir,
+    ep,
+    default_lang="",
+    convert_degrees_to_radians=True,
+    output_episode_idx: int | None = None,
+):
     data_path = (
         raw_dir
         / f"data/"
@@ -60,8 +131,8 @@ def make_zarr(raw_dir, output_dir, ep, convert_degrees_to_radians=True):
     data_df = pd.read_parquet(data_path)
 
     # Keep only this episode
-    ep_idx = int(ep["episode_index"])
-    data_df = data_df[data_df["episode_index"] == ep_idx]
+    source_ep_idx = int(ep["episode_index"])
+    data_df = data_df[data_df["episode_index"] == source_ep_idx]
 
     # Restrict to episode index range if available
     if "dataset_from_index" in ep and "dataset_to_index" in ep:
@@ -74,6 +145,23 @@ def make_zarr(raw_dir, output_dir, ep, convert_degrees_to_radians=True):
         ]
 
     data_df = data_df.sort_values("frame_index").reset_index(drop=True)
+
+    video_path = (
+        raw_dir
+        / f"videos/observation.images.front/"
+          f"chunk-{int(ep['videos/observation.images.front/chunk_index']):03d}/"
+          f"file-{int(ep['videos/observation.images.front/file_index']):03d}.mp4"
+    )
+
+    from_ts = float(ep["videos/observation.images.front/from_timestamp"]) if "videos/observation.images.front/from_timestamp" in ep else None
+    to_ts = float(ep["videos/observation.images.front/to_timestamp"]) if "videos/observation.images.front/to_timestamp" in ep else None
+
+    images = process_images(
+        video_path=video_path,
+        start_s=from_ts,
+        end_s=to_ts,
+        target_len=len(data_df),
+    )
 
     states = np.stack(
         data_df["observation.state"].to_numpy()
@@ -120,7 +208,7 @@ def make_zarr(raw_dir, output_dir, ep, convert_degrees_to_radians=True):
         f"timestamps={timestamps_ns.shape[0]}"
     )
 
-    print(f"Read episode {ep_idx} from {data_path}")
+    print(f"Read episode {source_ep_idx} from {data_path}")
     print(f"video:   {images.shape}")
 
     print(
@@ -141,9 +229,24 @@ def make_zarr(raw_dir, output_dir, ep, convert_degrees_to_radians=True):
         f"last={timestamps_ns[-1]}"
     )
 
+    out_ep_idx = source_ep_idx if output_episode_idx is None else output_episode_idx
+
     #make a dir inside output_dir/lerobot for current episode index if it doesn't exist
-    out_path = output_dir / "lerobot" / f"episode_{ep_idx:03d}"
+    out_path = output_dir / "lerobot" / f"episode_{out_ep_idx:03d}"
     out_path.mkdir(parents=True, exist_ok=True)
+
+    lang = default_lang
+    if not lang:
+        task_id = extract_task_id(ep)
+        if task_id is not None:
+            try:
+                lang = episode_task_text(task_id)
+            except FileNotFoundError:
+                logging.warning(
+                    "No description file found for task%d at %s. Falling back to --default-lang.",
+                    task_id,
+                    REPO_ROOT / f"description_task{task_id}.txt",
+                )
 
     t_img = min(65, timestamps_ns.shape[0])
     t_ld = min(1024, timestamps_ns.shape[0])
@@ -201,29 +304,32 @@ def make_zarr(raw_dir, output_dir, ep, convert_degrees_to_radians=True):
         )
         root["joint_action_lowdim_timestamps"][...] = timestamps_ns.copy()
 
-        # root.create_dataset(
-        #     "language_instruction",
-        #     shape=(1,),
-        #     dtype=bytes,
-        #     chunks=(1,),
-        #     compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
-        # )
-        # root["language_instruction"][...] = np.array([lang.encode()])
-        # root.create_dataset(
-        #     "language_instruction_timestamps",
-        #     shape=(1,),
-        #     dtype="uint64",
-        #     chunks=(1,),
-        #     compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
-        # )
-        # root["language_instruction_timestamps"][...] = np.array([0], dtype=np.uint64)
+        root.create_dataset(
+            "language_instruction",
+            shape=(1,),
+            dtype=bytes,
+            chunks=(1,),
+            compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
+        )
+        root["language_instruction"][...] = np.array([lang.encode("utf-8")])
+        root.create_dataset(
+            "language_instruction_timestamps",
+            shape=(1,),
+            dtype="uint64",
+            chunks=(1,),
+            compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
+        )
+        root["language_instruction_timestamps"][...] = np.array([0], dtype=np.uint64)
 
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
-        "--raw-dir", required=True, type=pathlib.Path, help="Root directory where lerobot data is stored."
+        "--raw-dir",
+        required=False,
+        type=pathlib.Path,
+        help="Optional root directory where one local lerobot dataset is stored.",
     )
     ap.add_argument("--output-dir", required=True, type=pathlib.Path, help="Directory to write per-demo .zarr groups.")
     ap.add_argument(
@@ -238,17 +344,58 @@ def main():
 
     #make a dir inside output dirr called "lerobot" if it doesn't exist
     (args.output_dir / "lerobot").mkdir(parents=True, exist_ok=True)
+    
+    # snapshot_download(
+    #     repo_id="klucny/rl_eth",
+    #     repo_type="dataset",
+    #     local_dir="/home/ubuntu/workspace/so101-world-model/data/raw_konsti"
+    # )
 
-    #read all parquet files and concatenate into one dataframe
-    dfs = []
-    for p in sorted((args.raw_dir / "meta" / "episodes").glob("chunk-*/file-*.parquet")):
-        dfs.append(pd.read_parquet(p))
-    episodes_df = pd.concat(dfs, ignore_index=True)
+    if args.raw_dir is not None:
+        episodes_df = read_episodes_df(args.raw_dir)
+        for _, ep in episodes_df.iterrows():
+            print(ep["episode_index"])
+            make_zarr(args.raw_dir, args.output_dir, ep, default_lang=args.default_lang)
+        return
 
-    #process each episode and write to zarr
-    for _, ep in episodes_df.iterrows():
-        print(ep['episode_index'])
-        make_zarr(args.raw_dir, args.output_dir, ep)
+    # Mirror process_lerobot_video.py task mapping by dataset source.
+    dataset_specs = [
+        ("klucny/rl_eth", 1),
+        ("klucny/rl_eth_task2", 2),
+    ]
+
+    episode_offset = 0
+    for repo_id, task_id in dataset_specs:
+        print(f"Downloading {repo_id} from HuggingFace Hub...")
+        local_dir = snapshot_download(repo_id=repo_id, repo_type="dataset")
+        raw_dir = pathlib.Path(local_dir)
+
+        episodes_df = read_episodes_df(raw_dir)
+        print(f"Found {len(episodes_df)} episodes in {repo_id}.")
+
+        try:
+            task_lang = episode_task_text(task_id)
+        except FileNotFoundError:
+            task_lang = args.default_lang
+            logging.warning(
+                "No description file found for task%d at %s. Falling back to --default-lang.",
+                task_id,
+                REPO_ROOT / f"description_task{task_id}.txt",
+            )
+
+        for _, ep in episodes_df.iterrows():
+            source_ep_idx = int(ep["episode_index"])
+            out_ep_idx = source_ep_idx + episode_offset
+            print(f"{repo_id}: source_episode={source_ep_idx} -> output_episode={out_ep_idx}")
+            make_zarr(
+                raw_dir,
+                args.output_dir,
+                ep,
+                default_lang=task_lang,
+                output_episode_idx=out_ep_idx,
+            )
+
+        episode_offset += len(episodes_df)
 
 if __name__ == "__main__":
     main()

@@ -22,7 +22,7 @@ data_components:
 dataset:
   _target_: cosmos_predict2.data.action.dataset_action.MimicDataset
   _convert_: partial
-  data_dir: /home/dchileban/lerobot
+  data_dir: /home/ubuntu/workspace/so101-world-model/data/action/processed/lerobot # TODO adapt this path
   timestep_anchor: workspace_rgb
   data_components: ${..data_components}
   data_transforms: ${..data_transforms}
@@ -30,4 +30,4 @@ dataset:
   policy_io: ${policy_io.policy_io}
   should_include_padded_tails: True
   seed: 42
-  num_val_episodes: 20
+  num_val_episodes: 10
