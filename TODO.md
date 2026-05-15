@@ -4,7 +4,8 @@ We have to do Video Model Finetuning with the LeRobot dataset and then Action De
 
 
 ## Inference
-- [ ] Write the inference pipeline that runs on a 5090
+- [-] Write the inference pipeline that runs on a 5090
+    First draft by Claude is done, needs to be tested on hardware as soon as we have a trained action decoder!!
 
 
 ## Video Model Finetuning
@@ -37,11 +38,13 @@ torchrun --nproc_per_node=<NUM_GPUS> -m scripts.train --config=cosmos_predict2/c
 
 - [x] data_preprocessing/action/process_lerobot.py already written to convert LeRobot to zarr
   - [ ] DO NOT FORGET: Change path to run it yourself in model/cosmos_predict2/configs/dataloading/dataset/lerobot.yaml
-- [ ] Make sure the data is adapted to remove the 6th DOF of the open/close gripper because we don't need it
+- [-] Make sure the data is adapted to remove the 6th DOF of the open/close gripper because we don't need it
     I think this is done right?
-- [ ] Fix the in_channels / out_channels number
-- [ ] Reduce the action decoder by a factor of 10
+- [x] Fix the in_channels / out_channels number
+- [x] Reduce the action decoder by a factor of 10
+    Can adapt it here: model/cosmos_predict2/configs/defaults/world2action_pipe.py
 - [ ] Check if the language embeddings are correctly produced and passed to the action decoder / video model.
+- [ ] Figure out why video embedding precomp is so slow
 
 To run preprocessing for action decoder training:
 
