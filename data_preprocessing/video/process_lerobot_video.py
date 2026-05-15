@@ -35,6 +35,8 @@ VIDEO_KEY = "observation.images.front"
 DATASET_SPECS: list[tuple[str, int]] = [
     ("klucny/rl_eth", 1),
     ("klucny/rl_eth_task2", 2),
+    ("klucny/rl_eth_task1_blue_cube", 12),
+    ("klucny/rl_eth_task1_red_cube", 13),
 ]
 
 
