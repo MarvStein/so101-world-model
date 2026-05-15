@@ -14,23 +14,28 @@ python data_preprocessing/video/process_lerobot_video.py
 """
 
 from __future__ import annotations
-from huggingface_hub import snapshot_download
-from itertools import islice
-
-
-
-import argparse
-import json
 import pathlib
 import subprocess
+import sys
 import imageio_ffmpeg
+
+from huggingface_hub import snapshot_download
 
 import pandas as pd
 from tqdm.auto import tqdm
 
 REPO_ROOT = pathlib.Path(__file__).parents[2]
 
+sys.path.insert(0, str(REPO_ROOT / "data_preprocessing"))
+from video_config import SO101_VIDEO_CONFIG  # noqa: E402
+
 VIDEO_KEY = "observation.images.front"
+
+# (repo_id, task_id) pairs — extend here to add more datasets
+DATASET_SPECS: list[tuple[str, int]] = [
+    ("klucny/rl_eth", 1),
+    ("klucny/rl_eth_task2", 2),
+]
 
 
 def read_episodes_df(raw_dir: pathlib.Path) -> pd.DataFrame:
@@ -55,7 +60,7 @@ def extract_episode(
     dst.parent.mkdir(parents=True, exist_ok=True)
 
     # Add one frame's worth of duration so the last frame is included
-    duration = to_ts - from_ts + 1.0 / 10
+    duration = to_ts - from_ts + 1.0 / SO101_VIDEO_CONFIG.fps
 
     # -ss before -i for fast keyframe seek; -t is relative to that seek point
     cmd = [
@@ -63,7 +68,7 @@ def extract_episode(
         "-ss", str(from_ts),
         "-i", str(src),
         "-t", str(duration),
-        "-vf", "crop=1268:951:326:0,fps=10",
+        "-vf", SO101_VIDEO_CONFIG.ffmpeg_vf,
         "-c:v", "libx264",
         "-crf", "18",
         "-pix_fmt", "yuv420p",
@@ -79,79 +84,46 @@ def extract_episode(
 
 def main() -> None:
     output_dir = REPO_ROOT / "data" / "lerobot"
-
-    print(f"Downloading klucny/rl_eth from HuggingFace Hub...")
-    local_dir = snapshot_download(repo_id="klucny/rl_eth", repo_type="dataset")
-    raw_dir1 = pathlib.Path(local_dir)
-
-    episodes_df1 = read_episodes_df(raw_dir1)
-    print(f"Found {len(episodes_df1)} episodes.")
-
-    print(f"Downloading klucny/rl_eth_task2 from HuggingFace Hub...")
-    local_dir = snapshot_download(repo_id="klucny/rl_eth_task2", repo_type="dataset")
-    raw_dir2 = pathlib.Path(local_dir)
-
-    episodes_df2 = read_episodes_df(raw_dir2)
-    print(f"Found {len(episodes_df2)} episodes.")
-
     (output_dir / "video").mkdir(parents=True, exist_ok=True)
     (output_dir / "metas").mkdir(parents=True, exist_ok=True)
 
-    for _, ep in tqdm(episodes_df1.iterrows(), total=len(episodes_df1), desc="episodes"):
-        ep_idx = int(ep["episode_index"])
-        chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
-        file_idx = int(ep[f"videos/{VIDEO_KEY}/file_index"])
-        from_ts = float(ep[f"videos/{VIDEO_KEY}/from_timestamp"])
-        to_ts = float(ep[f"videos/{VIDEO_KEY}/to_timestamp"])
+    episode_offset = 0
+    for repo_id, task_id in DATASET_SPECS:
+        print(f"Downloading {repo_id} from HuggingFace Hub...")
+        raw_dir = pathlib.Path(snapshot_download(repo_id=repo_id, repo_type="dataset"))
 
-        src_video = (
-            raw_dir1
-            / "videos"
-            / VIDEO_KEY
-            / f"chunk-{chunk_idx:03d}"
-            / f"file-{file_idx:03d}.mp4"
-        )
-        dst_video = output_dir / "video" / f"episode_{ep_idx:03d}.mp4"
+        episodes_df = read_episodes_df(raw_dir)
+        print(f"Found {len(episodes_df)} episodes in {repo_id}.")
 
-        extract_episode(
-            src_video,
-            dst_video,
-            from_ts,
-            to_ts,
-        )
+        task_text = episode_task_text(task_id)
 
-        task_text = episode_task_text(1)
-        dst_txt = output_dir / "metas" / f"episode_{ep_idx:03d}.txt"
-        dst_txt.write_text(task_text, encoding="utf-8")
-    
-    for _, ep in tqdm(episodes_df2.iterrows(), total=len(episodes_df2), desc="episodes"):
-        ep_idx = int(ep["episode_index"])+len(episodes_df1)
-        chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
-        file_idx = int(ep[f"videos/{VIDEO_KEY}/file_index"])
-        from_ts = float(ep[f"videos/{VIDEO_KEY}/from_timestamp"])
-        to_ts = float(ep[f"videos/{VIDEO_KEY}/to_timestamp"])
+        for _, ep in tqdm(episodes_df.iterrows(), total=len(episodes_df), desc=repo_id):
+            src_ep_idx = int(ep["episode_index"])
+            out_ep_idx = src_ep_idx + episode_offset
 
-        src_video = (
-            raw_dir2
-            / "videos"
-            / VIDEO_KEY
-            / f"chunk-{chunk_idx:03d}"
-            / f"file-{file_idx:03d}.mp4"
-        )
-        dst_video = output_dir / "video" / f"episode_{ep_idx:03d}.mp4"
+            src_video = (
+                raw_dir
+                / "videos"
+                / VIDEO_KEY
+                / f"chunk-{int(ep[f'videos/{VIDEO_KEY}/chunk_index']):03d}"
+                / f"file-{int(ep[f'videos/{VIDEO_KEY}/file_index']):03d}.mp4"
+            )
+            dst_video = output_dir / "video" / f"episode_{out_ep_idx:03d}.mp4"
 
-        extract_episode(
-            src_video,
-            dst_video,
-            from_ts,
-            to_ts,
-        )
+            extract_episode(
+                src_video,
+                dst_video,
+                float(ep[f"videos/{VIDEO_KEY}/from_timestamp"]),
+                float(ep[f"videos/{VIDEO_KEY}/to_timestamp"]),
+            )
 
-        task_text = episode_task_text(2)
-        dst_txt = output_dir / "metas" / f"episode_{ep_idx:03d}.txt"
-        dst_txt.write_text(task_text, encoding="utf-8")
+            dst_txt = output_dir / "metas" / f"episode_{out_ep_idx:03d}.txt"
+            dst_txt.write_text(task_text, encoding="utf-8")
 
-    print(f"\nDone. {len(episodes_df1)+len(episodes_df2)} episodes written to {output_dir}")
+        episode_offset += len(episodes_df)
+
+    print(f"\nDone. {episode_offset} episodes written to {output_dir}")
+
 
 if __name__ == "__main__":
     main()

@@ -5,6 +5,7 @@ import logging
 import pathlib
 import pickle
 import re
+import sys
 from typing import Literal
 import pandas as pd
 
@@ -16,18 +17,23 @@ from PIL import Image
 import imageio.v3 as iio
 import cv2
 
+# Make data_preprocessing/ importable so we can share VideoTransformConfig
+sys.path.insert(0, str(pathlib.Path(__file__).parents[1]))
+from video_config import SO101_VIDEO_CONFIG  # noqa: E402
 
 S_TO_NS = 1_000_000_000
 REPO_ROOT = pathlib.Path(__file__).parents[2]
 
 # Match the transform in data_preprocessing/video/process_lerobot_video.py:
-#   -vf "crop=1268:951:326:0,fps=10"
-# IMPORTANT IF YOU CHANGE THESE HERE, CHANGE THEM ALSO IN THE VIDEO PREPROCESSING AND DEPLOYMENT PIPELINE!
-# REQUIRES RETRAINING!
-VIDEO_CROP_W = 1268
-VIDEO_CROP_H = 951
-VIDEO_CROP_X = 326
-VIDEO_CROP_Y = 0
+#   -vf "crop=<crop_w>:<crop_h>:<crop_x>:<crop_y>,fps=<fps>"
+# All values come from SO101_VIDEO_CONFIG (data_preprocessing/video_config.py).
+# IMPORTANT: If you change them there, you must re-run this script and retrain!
+VIDEO_CROP_W = SO101_VIDEO_CONFIG.crop_w
+VIDEO_CROP_H = SO101_VIDEO_CONFIG.crop_h
+VIDEO_CROP_X = SO101_VIDEO_CONFIG.crop_x
+VIDEO_CROP_Y = SO101_VIDEO_CONFIG.crop_y
+VIDEO_TARGET_H = SO101_VIDEO_CONFIG.target_h
+VIDEO_TARGET_W = SO101_VIDEO_CONFIG.target_w
 
 
 def episode_task_text(task_id: int) -> str:
@@ -101,6 +107,7 @@ def process_images(
         x1 = max(x0, min(x0 + VIDEO_CROP_W, w))
         y1 = max(y0, min(y0 + VIDEO_CROP_H, h))
         frame = frame[y0:y1, x0:x1]
+        frame = cv2.resize(frame, (VIDEO_TARGET_W, VIDEO_TARGET_H), interpolation=cv2.INTER_AREA)
 
         frames.append(frame)
     cap.release()

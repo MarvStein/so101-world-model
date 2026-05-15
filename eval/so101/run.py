@@ -36,7 +36,7 @@ import torch
 from PIL import Image
 
 # ---------------------------------------------------------------------------
-# Model imports (model/ must be on PYTHONPATH — see eval.sh)
+# Model imports (model/ must be on PYTHONPATH -- see eval.sh)
 # ---------------------------------------------------------------------------
 from cosmos_predict2.configs.config import make_config
 from cosmos_predict2.data.action.utils import extract_normalization_types
@@ -47,15 +47,23 @@ from imaginaire.lazy_config import instantiate
 from imaginaire.utils.config_helper import override
 
 # ---------------------------------------------------------------------------
-# LeRobot imports (lerobot/src must be on PYTHONPATH — see eval.sh)
+# LeRobot imports (lerobot/src must be on PYTHONPATH -- see eval.sh)
 # ---------------------------------------------------------------------------
 from lerobot.cameras.opencv import OpenCVCameraConfig
 from lerobot.robots.so_follower import SO101Follower
 from lerobot.robots.so_follower.config_so_follower import SOFollowerRobotConfig
 
 # ---------------------------------------------------------------------------
+# Shared video transform config (single source of truth)
+# ---------------------------------------------------------------------------
+_REPO_ROOT = pathlib.Path(__file__).parents[2]
+sys.path.insert(0, str(_REPO_ROOT / "data_preprocessing"))
+from video_config import SO101_VIDEO_CONFIG  # noqa: E402
+
+# ---------------------------------------------------------------------------
 # Constants matching data_preprocessing/action/process_lerobot.py and
-# data_preprocessing/video/process_lerobot_video.py  (-vf "crop=1268:951:326:0,fps=10")
+# data_preprocessing/video/process_lerobot_video.py
+# All values come from SO101_VIDEO_CONFIG (data_preprocessing/video_config.py).
 # ---------------------------------------------------------------------------
 
 # SO101 joint names in the order stored by the robot (gripper excluded from model I/O)
@@ -67,15 +75,12 @@ JOINT_NAMES: list[str] = [
     "wrist_roll",
 ]
 
-# Crop parameters: w=1268, h=951, x=326, y=0
-VIDEO_CROP_X = 326
-VIDEO_CROP_Y = 0
-VIDEO_CROP_W = 1268
-VIDEO_CROP_H = 951
-
-# Model input resolution
-TARGET_H = 480
-TARGET_W = 640
+VIDEO_CROP_X = SO101_VIDEO_CONFIG.crop_x
+VIDEO_CROP_Y = SO101_VIDEO_CONFIG.crop_y
+VIDEO_CROP_W = SO101_VIDEO_CONFIG.crop_w
+VIDEO_CROP_H = SO101_VIDEO_CONFIG.crop_h
+TARGET_H = SO101_VIDEO_CONFIG.target_h
+TARGET_W = SO101_VIDEO_CONFIG.target_w
 
 # Horizons from model/cosmos_predict2/configs/dataloading/policy_io/lerobot.yaml
 IMG_HORIZON = 5    # 5 frames at IMG_FPS
