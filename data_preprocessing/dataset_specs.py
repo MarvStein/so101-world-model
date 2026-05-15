@@ -8,4 +8,6 @@ DATASET_SPECS: list[tuple[str, int]] = [
     ("klucny/rl_eth_task2", 2),
     ("klucny/rl_eth_task1_blue_cube", 12),
     ("klucny/rl_eth_task1_red_cube", 13),
+    ("klucny/rl_eth_task2_blue_cube", 22),
+    ("klucny/rl_eth_task2_red_cube", 23),
 ]

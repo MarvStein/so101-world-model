@@ -1,0 +1,1 @@
+Push the target object, in this case the orange cube, around the obstacle, a red cylinder laying in the big white circle, to the goal position which is the smaller of the two white circles seen on the left. The target object can leave the area bounded by the two parallel white straight lines. But the target object is not allowed to touch the red cylinder at all!
