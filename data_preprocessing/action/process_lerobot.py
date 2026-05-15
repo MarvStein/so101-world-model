@@ -254,8 +254,8 @@ def make_zarr(
     out_ep_idx = source_ep_idx if output_episode_idx is None else output_episode_idx
 
     #make a dir inside output_dir/lerobot for current episode index if it doesn't exist
-    out_path = output_dir / "lerobot" / f"episode_{out_ep_idx:03d}"
-    out_path.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / "lerobot" / f"episode_{out_ep_idx:03d}.zarr"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     lang = default_lang
     if not lang:
