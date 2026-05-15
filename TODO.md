@@ -6,7 +6,7 @@ We have to do Video Model Finetuning with the LeRobot dataset and then Action De
 Run this in the root directory of the repo. Create a ./data/ folder and provide the path
 
 ```bash
-setup_new_machine.sh --data-dir /path/to/data_folder
+bash setup_new_machine.sh --data-dir ./path/to/data_folder
 ```
 
 ## Inference

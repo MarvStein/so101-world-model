@@ -76,9 +76,9 @@ def make_config() -> Config:
     register_training_and_val_video_data()
     register_optimizer()
     register_scheduler()
-    register_video_model()
-    register_action_model()
     #register_video_model()
+    register_action_model()
+    register_video_model()
     register_pipe()
 
     register_checkpoint()
