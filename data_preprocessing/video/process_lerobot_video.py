@@ -78,7 +78,7 @@ def extract_episode(
 
 
 def main() -> None:
-    output_dir = REPO_ROOT / "data" / "lerobot"
+    output_dir = REPO_ROOT / "data" / "video_fine" / "lerobot"
     (output_dir / "video").mkdir(parents=True, exist_ok=True)
     (output_dir / "metas").mkdir(parents=True, exist_ok=True)
 

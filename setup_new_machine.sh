@@ -12,7 +12,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATA_DIR="$REPO_ROOT/data"
+DATA_DIR="{$REPO_ROOT}/data"
 SKIP_CHECKPOINTS=false
 SKIP_DATA=false
 
@@ -93,13 +93,13 @@ if [[ "$SKIP_DATA" == false ]]; then
     echo "[4a/5] Processing LeRobot video dataset (mp4 + T5 metas)..."
     cd "$REPO_ROOT"
     source .venv/bin/activate
-    python data_preprocessing/video/process_lerobot_video.py
+    python data_preprocessing/video/process_lerobot_video.py 
     deactivate
 
     # -- 4b. Compute T5 embeddings for video finetuning -----------------------
     echo ""
     echo "[4b/5] Computing T5 embeddings for video finetuning..."
-    LEROBOT_VIDEO_DIR="$DATA_DIR/lerobot"
+    LEROBOT_VIDEO_DIR="$DATA_DIR/video_fine/lerobot"
     cd "$REPO_ROOT/model"
     uv run python ../data_preprocessing/video/get_t5_embeddings.py \
         --dataset_path "$LEROBOT_VIDEO_DIR"
@@ -107,7 +107,7 @@ if [[ "$SKIP_DATA" == false ]]; then
     # -- 4c. Process lerobot action data (zarr for action decoder) ------------
     echo ""
     echo "[4c/5] Processing LeRobot action data to zarr..."
-    ACTION_ZARR_DIR="$DATA_DIR/action/processed"
+    ACTION_ZARR_DIR="$DATA_DIR/action"
     cd "$REPO_ROOT"
     source .venv/bin/activate
     python data_preprocessing/action/process_lerobot.py \
