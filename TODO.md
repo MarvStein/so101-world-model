@@ -51,6 +51,8 @@ To run preprocessing for action decoder training:
 ```bash
 source .venv/bin/activate
 python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/process_lerobot.py --output-dir /home/ubuntu/workspace/so101-world-model/data/action/processed
+# Language embedding computation
+python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/precompute_t5.py --dataset-path /home/ubuntu/workspace/so101-world-model/data/action/processed/lerobot
 ```
 
 Then run precomputation pipeline:

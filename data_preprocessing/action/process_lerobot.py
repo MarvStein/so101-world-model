@@ -22,6 +22,8 @@ REPO_ROOT = pathlib.Path(__file__).parents[2]
 
 # Match the transform in data_preprocessing/video/process_lerobot_video.py:
 #   -vf "crop=1268:951:326:0,fps=10"
+# IMPORTANT IF YOU CHANGE THESE HERE, CHANGE THEM ALSO IN THE VIDEO PREPROCESSING AND DEPLOYMENT PIPELINE!
+# REQUIRES RETRAINING!
 VIDEO_CROP_W = 1268
 VIDEO_CROP_H = 951
 VIDEO_CROP_X = 326
@@ -271,7 +273,7 @@ def make_zarr(
             shape=images.shape,
             dtype=np.uint8,
             chunks=(t_img, *images.shape[1:]),
-            compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
+            compressor=Blosc(cname="lz4", clevel=9, shuffle=Blosc.BITSHUFFLE),
         )
         root["workspace_rgb"][...] = images
         root.create_dataset(
@@ -358,12 +360,6 @@ def main():
     #make a dir inside output dirr called "lerobot" if it doesn't exist
     (args.output_dir / "lerobot").mkdir(parents=True, exist_ok=True)
     
-    # snapshot_download(
-    #     repo_id="klucny/rl_eth",
-    #     repo_type="dataset",
-    #     local_dir="/home/ubuntu/workspace/so101-world-model/data/raw_konsti"
-    # )
-
     if args.raw_dir is not None:
         episodes_df = read_episodes_df(args.raw_dir)
         for _, ep in episodes_df.iterrows():
@@ -374,13 +370,14 @@ def main():
     # Mirror process_lerobot_video.py task mapping by dataset source.
     dataset_specs = [
         ("klucny/rl_eth", 1),
-        #("klucny/rl_eth_task2", 2),
+        ("klucny/rl_eth_task2", 2),
     ]
 
     episode_offset = 0
     for repo_id, task_id in dataset_specs:
         print(f"Downloading {repo_id} from HuggingFace Hub...")
         local_dir = snapshot_download(repo_id=repo_id, repo_type="dataset")
+        print(local_dir)
         raw_dir = pathlib.Path(local_dir)
 
         episodes_df = read_episodes_df(raw_dir)
@@ -395,7 +392,7 @@ def main():
                 task_id,
                 REPO_ROOT / f"description_task{task_id}.txt",
             )
-        count = 0
+        
         for _, ep in episodes_df.iterrows():
             source_ep_idx = int(ep["episode_index"])
             out_ep_idx = source_ep_idx + episode_offset
@@ -407,10 +404,7 @@ def main():
                 default_lang=task_lang,
                 output_episode_idx=out_ep_idx,
             )
-            if count == 25:
-                break
-            count += 1
-
+            
         episode_offset += len(episodes_df)
 
 if __name__ == "__main__":
