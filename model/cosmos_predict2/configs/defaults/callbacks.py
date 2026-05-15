@@ -18,6 +18,7 @@ from hydra.core.config_store import ConfigStore
 from cosmos_predict2.callbacks.device_monitor import DeviceMonitor
 from cosmos_predict2.callbacks.grad_clip import GradClip
 from cosmos_predict2.callbacks.iter_speed import IterSpeed
+from cosmos_predict2.callbacks.wandb_logger import WandbLogger
 from imaginaire.callbacks.manual_gc import ManualGarbageCollection
 from imaginaire.lazy_config import PLACEHOLDER
 from imaginaire.lazy_config import LazyCall as L
@@ -32,7 +33,8 @@ BASIC_CALLBACKS = dict(
         every_n="${trainer.logging_iter}",
     ),
     manual_gc=L(ManualGarbageCollection)(every_n=5),
-    grad_clip=L(GradClip)(clip_norm=10.0),
+    grad_clip=L(GradClip)(clip_norm=10.0, log_wandb=True),
+    wandb_logger=L(WandbLogger)(every_n="${trainer.logging_iter}"),
 )
 
 
