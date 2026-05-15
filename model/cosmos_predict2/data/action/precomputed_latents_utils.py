@@ -1,8 +1,7 @@
-"""Helpers for cache-backed precomputed Video2World latents."""
+"""Helpers for precomputed Video2World latents stored inside episode zarrs."""
 
 from __future__ import annotations
 
-import pathlib
 from typing import Any
 
 import torch
@@ -21,8 +20,3 @@ def load_precomputed_latents(data_batch: dict[str, Any], *, device: str, dtype: 
     if not torch.is_tensor(latent_state):
         latent_state = torch.as_tensor(latent_state)
     return latent_state.to(device=device, dtype=dtype).contiguous()
-
-
-def default_cache_path(data_dir: str | pathlib.Path, *, train: bool) -> pathlib.Path:
-    data_dir = pathlib.Path(data_dir)
-    return data_dir / f".precomputed_video_latents_{'train' if train else 'val'}.zarr"

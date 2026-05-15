@@ -1,4 +1,4 @@
-"""Example integration for cache-backed precomputed Video2World latents.
+"""Example integration for precomputed Video2World latents stored per-episode.
 
 The actual implementation lives in:
 - cosmos_predict2/models/world2action_model.py
@@ -23,14 +23,14 @@ from cosmos_predict2.data.action.precomputed_latents_utils import (
 #     so101_cfg["model"]["config"]["use_precomputed_latents"] = True
 
 
-# 2) Dataset cache key
-# --------------------
-# The dataset now looks for a sidecar zarr cache at:
-#     .precomputed_video_latents_train.zarr
-#     .precomputed_video_latents_val.zarr
+# 2) Per-episode latent storage
+# -----------------------------
+# After running precompute_video_embeddings.py, each episode zarr contains:
+#     episode_xxx.zarr/precomputed_video_latents   shape (n_valid_steps, 16, 16, 60, 80)
 #
-# Each cache contains one array:
-#     PRECOMPUTED_LATENTS_KEY == "precomputed_video_latents"
+# The array is indexed by step_idx (same index ChunkReader uses internally),
+# so no train/val split information is baked in.
+# PRECOMPUTED_LATENTS_KEY == "precomputed_video_latents"
 
 
 # 3) Model fast-path

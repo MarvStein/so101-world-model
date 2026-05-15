@@ -13,12 +13,12 @@ import numpy as np
 import threadpoolctl
 import torch
 import tqdm
-import zarr
 
 import cosmos_predict2.data.action.types as data_spec
 from cosmos_predict2.data.action import chunk_reader
 from cosmos_predict2.data.action import data_transforms as data_transforms_mod
 from cosmos_predict2.data.action.data_transforms import apply_data_transforms, make_data_transforms
+from cosmos_predict2.data.action.precomputed_latents_utils import PRECOMPUTED_LATENTS_KEY
 from cosmos_predict2.data.action.types import LieRepr, NormalizationType, ObsMeta, ObsType
 from cosmos_predict2.data.action.utils import dict_apply, get_paths
 from cosmos_predict2.module import normalizer
@@ -40,18 +40,10 @@ class MimicDataset(torch.utils.data.Dataset):
         num_val_episodes: int = 1,
         train: bool = True,
         verbose: bool = False,
-        precomputed_latents_path: str | None = None,
-        precomputed_latents_key: str = "precomputed_video_latents",
     ) -> None:
         self._data_dir = pathlib.Path(data_dir)
         self._train = train
         self._episode_paths = get_paths(self._data_dir, verbose=verbose)
-        self._precomputed_latents_key = precomputed_latents_key
-        default_latents_path = self._data_dir / f".precomputed_video_latents_{'train' if train else 'val'}.zarr"
-        self._precomputed_latents_path = (
-            pathlib.Path(precomputed_latents_path) if precomputed_latents_path else default_latents_path
-        )
-        self._precomputed_latents_root = None
 
         def get_source_component(key: str, spec: dict, prefix: str) -> tuple[str, ObsMeta]:
             source_name = source_component_names.get(f"{prefix}/{key}", key)
@@ -175,13 +167,7 @@ class MimicDataset(torch.utils.data.Dataset):
             threadpoolctl.threadpool_limits(1)
             self._threadpool_limits_is_applied = True
 
-        data = self._chunk_reader.read_chunk(idx)
-
-        if self._precomputed_latents_root is None and self._precomputed_latents_path.exists():
-            self._precomputed_latents_root = zarr.open(str(self._precomputed_latents_path), mode="r")
-
-        if self._precomputed_latents_root is not None and self._precomputed_latents_key in self._precomputed_latents_root:
-            data[self._precomputed_latents_key] = self._precomputed_latents_root[self._precomputed_latents_key][idx]
+        data = self._chunk_reader.read_chunk(idx, extra_step_keys=[PRECOMPUTED_LATENTS_KEY])
 
         return apply_data_transforms(
             data,

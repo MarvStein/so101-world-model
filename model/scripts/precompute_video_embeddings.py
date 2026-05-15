@@ -1,12 +1,17 @@
 #!/usr/bin/env python
-"""Precompute clip-level Video2World latents for action-decoder training."""
+"""Precompute clip-level Video2World latents and store them inside each episode zarr.
+
+Latents are written to ``episode_xxx.zarr/precomputed_video_latents`` as a dense
+array of shape ``(n_valid_steps, 16, 16, 60, 80)`` float32, indexed by the same
+``step_idx`` that ``ChunkReader.read_chunk`` uses internally.  This makes the
+cache split-independent: the train/val split is applied only at training time.
+"""
 
 from __future__ import annotations
 
 import argparse
 import pathlib
 import pickle
-import shutil
 
 import hydra
 import numpy as np
@@ -18,8 +23,12 @@ import zarr
 
 from cosmos_predict2.configs.config_video2world import get_cosmos_predict2_video2world_pipeline
 from cosmos_predict2.configs.defaults.data_action import get_data_config
+from cosmos_predict2.data.action.precomputed_latents_utils import PRECOMPUTED_LATENTS_KEY
 from cosmos_predict2.data.action.utils import get_paths
 from cosmos_predict2.pipelines.video2world import Video2WorldPipeline
+
+# Shape of one encoded latent (C, T, H, W) — matches pipe.encode output[1:]
+_LATENT_SHAPE = (16, 16, 60, 80)
 
 
 def ensure_episode_paths_cache(data_dir: pathlib.Path) -> None:
@@ -38,24 +47,27 @@ def ensure_episode_paths_cache(data_dir: pathlib.Path) -> None:
         pickle.dump(episode_dirs, f)
 
 
-def load_dataset(data_config_name: str, data_dir: pathlib.Path, train: bool):
+def load_dataset(data_config_name: str, data_dir: pathlib.Path):
+    """Load a MimicDataset covering *all* episodes (no train/val split)."""
     data_config = get_data_config(data_config_name)
     ensure_episode_paths_cache(data_dir)
 
     dataset_cfg = data_config.dataset.dataset
     obs_policy_io = dataset_cfg.policy_io.get("obs", {})
     data_components = dataset_cfg.get("data_components", {})
-    # TODO is this actually true that we need to remove language embedding for precomputation?
-    # Copilot came up with this
     if "language_embedding" in obs_policy_io and "language_embedding" not in data_components:
-        # Precompute only needs workspace RGB clips. Allow lerobot zarrs without language embeddings.
         with open_dict(obs_policy_io):
             del obs_policy_io["language_embedding"]
+
+    # Override split so that ALL episodes are included — the split is applied
+    # only at training time; precomputed latents are episode-local.
+    with open_dict(dataset_cfg):
+        dataset_cfg.num_val_episodes = 0
 
     return hydra.utils.instantiate(
         dataset_cfg,
         data_dir=str(data_dir),
-        train=train,
+        train=True,
         verbose=True,
     )
 
@@ -77,22 +89,36 @@ def load_video2world_pipeline(checkpoint_path: str, device: str, enable_guardrai
     return pipe
 
 
-def precompute_split(
+def preallocate_episode_arrays(dataset, overwrite: bool) -> None:
+    """Create (or verify) the latent zarr array inside every episode zarr."""
+    skipped = 0
+    for episode_path, n_valid_steps in dataset._chunk_reader.episodes:
+        with zarr.open(str(episode_path), "a") as root:
+            if PRECOMPUTED_LATENTS_KEY in root:
+                if not overwrite:
+                    skipped += 1
+                    continue
+                del root[PRECOMPUTED_LATENTS_KEY]
+            root.create_dataset(
+                PRECOMPUTED_LATENTS_KEY,
+                shape=(n_valid_steps,) + _LATENT_SHAPE,
+                chunks=(1,) + _LATENT_SHAPE,
+                dtype=np.float32,
+            )
+    if skipped:
+        print(
+            f"Skipped pre-allocation for {skipped} episode(s) that already have latents. "
+            "Re-run with --overwrite to replace them."
+        )
+
+
+def precompute(
     *,
     pipe: Video2WorldPipeline,
     dataset,
-    cache_path: pathlib.Path,
     batch_size: int,
     num_workers: int,
-    overwrite: bool,
 ) -> None:
-    if cache_path.exists() and not overwrite:
-        raise FileExistsError(f"Cache already exists: {cache_path}. Re-run with --overwrite to replace it.")
-
-    if cache_path.exists() and overwrite:
-        shutil.rmtree(cache_path)
-
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -100,43 +126,46 @@ def precompute_split(
         num_workers=num_workers,
         pin_memory=False,
         persistent_workers=num_workers > 0,
+        drop_last=False,
     )
 
-    root = zarr.open(str(cache_path), mode="a")
-    latent_array = None
-    write_index = 0
+    chunk_reader = dataset._chunk_reader
+    global_idx = 0
+
+    # Keep one zarr handle open at a time; episodes arrive in order because
+    # shuffle=False and ChunkReader iterates episodes sequentially.
+    current_episode_path: pathlib.Path | None = None
+    current_root: zarr.Group | None = None
 
     with torch.inference_mode():
-        for batch in tqdm(dataloader, total=len(dataloader), desc=f"precomputing {cache_path.stem}"):
+        for batch in tqdm(dataloader, total=len(dataloader), desc="encoding"):
             raw_state = torch.cat((batch["obs/workspace_rgb"], batch["action/workspace_rgb"]), dim=2)
             raw_state = raw_state.to(device=pipe.tensor_kwargs["device"], dtype=torch.float32)
-            latent_state = pipe.encode(raw_state).contiguous().float().cpu().numpy()
+            latents = pipe.encode(raw_state).contiguous().float().cpu().numpy()  # (B, 16, 16, 60, 80)
 
-            if latent_array is None:
-                latent_shape = (len(dataset),) + latent_state.shape[1:]
-                chunk_shape = (min(batch_size, len(dataset)),) + latent_state.shape[1:]
-                latent_array = root.create_dataset(
-                    "precomputed_video_latents",
-                    shape=latent_shape,
-                    chunks=chunk_shape,
-                    dtype=np.float32,
-                )
-                root.attrs.update(
-                    {
-                        "source": "Video2WorldPipeline.encode",
-                        "latent_shape": latent_shape[1:],
-                        "num_samples": len(dataset),
-                    }
-                )
+            for i in range(latents.shape[0]):
+                episode_path, step_idx = chunk_reader.resolve(global_idx)
 
-            next_index = write_index + latent_state.shape[0]
-            latent_array[write_index:next_index] = latent_state
-            write_index = next_index
+                if episode_path != current_episode_path:
+                    if current_root is not None:
+                        current_root.store.close()
+                    current_root = zarr.open(str(episode_path), "a")
+                    current_episode_path = episode_path
+
+                current_root[PRECOMPUTED_LATENTS_KEY][step_idx] = latents[i]
+                global_idx += 1
+
+    if current_root is not None:
+        current_root.store.close()
+
+    print(f"Wrote latents for {global_idx} samples across {len(chunk_reader.episodes)} episode(s).")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Precompute Video2World latents into a zarr sidecar cache.")
-    parser.add_argument("--video_model", required=True, help="Path to the Video2World checkpoint to use")
+    parser = argparse.ArgumentParser(
+        description="Precompute Video2World latents into each episode zarr."
+    )
+    parser.add_argument("--video_model", required=True, help="Path to the Video2World checkpoint")
     parser.add_argument("--dataset_path", required=True, help="Path to the dataset root directory")
     parser.add_argument(
         "--data_config",
@@ -144,20 +173,14 @@ def main() -> int:
         choices=["bridge", "libero", "lerobot"],
         help="Dataset config to use for loading samples",
     )
-    parser.add_argument(
-        "--split",
-        default="both",
-        choices=["train", "val", "both"],
-        help="Which split(s) to precompute",
-    )
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size for encoding")
     parser.add_argument("--num_workers", type=int, default=0, help="DataLoader workers")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--overwrite", action="store_true", help="Overwrite an existing cache")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing latents")
     parser.add_argument(
         "--enable_guardrail",
         action="store_true",
-        help="Enable guardrail loading for the Video2World pipeline (disabled by default for precompute).",
+        help="Enable guardrail loading (disabled by default for precompute).",
     )
     args = parser.parse_args()
 
@@ -165,21 +188,16 @@ def main() -> int:
     if not data_dir.exists():
         raise FileNotFoundError(f"Dataset directory does not exist: {data_dir}")
 
+    dataset = load_dataset(args.data_config, data_dir)
     pipe = load_video2world_pipeline(args.video_model, args.device, args.enable_guardrail)
-    splits = [True, False] if args.split == "both" else [args.split == "train"]
 
-    for is_train in splits:
-        dataset = load_dataset(args.data_config, data_dir, train=is_train)
-        cache_path = data_dir / f".precomputed_video_latents_{'train' if is_train else 'val'}.zarr"
-        precompute_split(
-            pipe=pipe,
-            dataset=dataset,
-            cache_path=cache_path,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            overwrite=args.overwrite,
-        )
-        print(f"Wrote {len(dataset)} latents to {cache_path}")
+    preallocate_episode_arrays(dataset, overwrite=args.overwrite)
+    precompute(
+        pipe=pipe,
+        dataset=dataset,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+    )
 
     return 0
 

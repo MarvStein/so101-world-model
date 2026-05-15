@@ -63,8 +63,8 @@ deactivate
 cd model
 source .venv/bin/activate
 python scripts/precompute_video_embeddings.py \
-  --video_model /home/ubuntu/workspace/so101-world-model/model/checkpoints/posttraining/video2world/v2w_lerobot-so101_custom/checkpoints/model/iter_000004000_fused.pt \
-  --dataset_path /home/ubuntu/workspace/so101-world-model/data/action/processed/lerobot \
+  --video_model /home/jbaur/projects/so101-world-model/model/checkpoints/video_backbone/iter_000003000_fused.pt \
+  --dataset_path /home/jbaur/projects/so101-world-model/data/action/lerobot \
   --data_config lerobot \
   --split both \
   --batch_size 4
