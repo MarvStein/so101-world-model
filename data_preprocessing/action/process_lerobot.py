@@ -20,6 +20,7 @@ import cv2
 # Make data_preprocessing/ importable so we can share VideoTransformConfig
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1]))
 from video_config import SO101_VIDEO_CONFIG  # noqa: E402
+from dataset_specs import DATASET_SPECS  # noqa: E402
 
 S_TO_NS = 1_000_000_000
 REPO_ROOT = pathlib.Path(__file__).parents[2]
@@ -374,14 +375,8 @@ def main():
             make_zarr(args.raw_dir, args.output_dir, ep, default_lang=args.default_lang)
         return
 
-    # Mirror process_lerobot_video.py task mapping by dataset source.
-    dataset_specs = [
-        ("klucny/rl_eth", 1),
-        ("klucny/rl_eth_task2", 2),
-    ]
-
     episode_offset = 0
-    for repo_id, task_id in dataset_specs:
+    for repo_id, task_id in DATASET_SPECS:
         print(f"Downloading {repo_id} from HuggingFace Hub...")
         local_dir = snapshot_download(repo_id=repo_id, repo_type="dataset")
         print(local_dir)

@@ -28,16 +28,9 @@ REPO_ROOT = pathlib.Path(__file__).parents[2]
 
 sys.path.insert(0, str(REPO_ROOT / "data_preprocessing"))
 from video_config import SO101_VIDEO_CONFIG  # noqa: E402
+from dataset_specs import DATASET_SPECS  # noqa: E402
 
 VIDEO_KEY = "observation.images.front"
-
-# (repo_id, task_id) pairs — extend here to add more datasets
-DATASET_SPECS: list[tuple[str, int]] = [
-    ("klucny/rl_eth", 1),
-    ("klucny/rl_eth_task2", 2),
-    ("klucny/rl_eth_task1_blue_cube", 12),
-    ("klucny/rl_eth_task1_red_cube", 13),
-]
 
 
 def read_episodes_df(raw_dir: pathlib.Path) -> pd.DataFrame:

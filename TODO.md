@@ -2,11 +2,18 @@
 
 We have to do Video Model Finetuning with the LeRobot dataset and then Action Decoder Pretraining. For that, we also need to setup brev completely to be able to run everything on the H100.
 
+## First time setup on a new instance
+Run this in the root directory of the repo. Create a ./data/ folder and provide the path
+
+```bash
+setup_new_machine.sh --data-dir /path/to/data_folder
+```
 
 ## Inference
 - [-] Write the inference pipeline that runs on a 5090
     First draft by Claude is done, needs to be tested on hardware as soon as we have a trained action decoder!!
 
+See [run.py](/home/jbaur-lt/projects/so101-world-model/eval/so101/run.py)
 
 ## Video Model Finetuning
 
@@ -17,6 +24,8 @@ We have to do Video Model Finetuning with the LeRobot dataset and then Action De
 
 
 ### To run finetuning:
+Add / adapt the datasets in [dataset_specs.py](data_preprocessing/dataset_specs.py).
+
 ```bash
 # get dataset (only do once)
 source .venv/bin/activate # activate the so-101-world-model venv from the root of the repo
@@ -65,9 +74,7 @@ source .venv/bin/activate
 python scripts/precompute_video_embeddings.py \
   --video_model /home/jbaur/projects/so101-world-model/model/checkpoints/video_backbone/iter_000003000_fused.pt \
   --dataset_path /home/jbaur/projects/so101-world-model/data/action/lerobot \
-  --data_config lerobot \
-  --split both \
-  --batch_size 4
+  --data_config lerobot 
 ```
 
 Training the action decoder:
@@ -75,7 +82,6 @@ Register the fine-tuned video model here: [world2action_model.py](model/cosmos_p
 Setup everything in [world2action.py](model/cosmos_predict2/configs/experiment/world2action.py)
 Change the video model and action model register order in [config.py](/home/jbaur/projects/so101-world-model/model/cosmos_predict2/configs/config.py). The video model should be registered first.
 Adapt the paths in [lerobot.yaml](model/cosmos_predict2/configs/dataloading/dataset/lerobot.yaml)
-
 
 Run:
 ```bash
