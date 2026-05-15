@@ -30,6 +30,7 @@ cd ../data_preprocessing/video/
 python get_t5_embeddings.py --dataset_path ../../data/lerobot
 
 # finetune
+# Change the video model and action model register order in [config.py](/home/jbaur/projects/so101-world-model/model/cosmos_predict2/configs/config.py). The video model should be registered after action model.
 torchrun --nproc_per_node=<NUM_GPUS> -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment="v2w_lerobot-so101_custom"
 ```
 
@@ -56,7 +57,7 @@ python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/precom
 ```
 
 Then run precomputation pipeline:
-Adapt paths!
+Adapt paths! This doesn't work correctly yet so ignore for now
 ```bash
 deactivate
 cd model
@@ -69,7 +70,20 @@ python scripts/precompute_video_embeddings.py \
   --batch_size 4
 ```
 
+Training the action decoder:
+Register the fine-tuned video model here: [world2action_model.py](model/cosmos_predict2/configs/defaults/world2action_model.py)
+Setup everything in [world2action.py](model/cosmos_predict2/configs/experiment/world2action.py)
+Change the video model and action model register order in [config.py](/home/jbaur/projects/so101-world-model/model/cosmos_predict2/configs/config.py). The video model should be registered first.
+Adapt the paths in [lerobot.yaml](model/cosmos_predict2/configs/dataloading/dataset/lerobot.yaml)
 
+
+Run:
+```bash
+deactivate
+cd model
+source .venv/bin/activate
+torchrun -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment="experiment name"
+```
 
 # BACKLOG
 

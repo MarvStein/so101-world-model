@@ -53,7 +53,6 @@ def main():
 
     for dataset in args.dataset_path:
         paths = pathlib.Path(dataset).glob("**/*.zarr")
-
         for path in tqdm.tqdm(paths, desc="Precomputing language embeddings."):
             add_t5(path, encoder=encoder, embedding=embedding)
 

@@ -12,17 +12,17 @@ data_components:
   joint_action_lowdim:
     obs_type: ${ObsType:JOINT_POS}
     repr: ${LieRepr:ABSOLUTE}
-  # language_instruction:
-  #   obs_type: ${ObsType:LANGUAGE}
-  #   repr: null
-  # language_embedding:
-  #   obs_type: ${ObsType:LANGUAGE_EMBEDDING}
-  #   repr: null
+  language_instruction:
+    obs_type: ${ObsType:LANGUAGE}
+    repr: null
+  language_embedding:
+    obs_type: ${ObsType:LANGUAGE_EMBEDDING}
+    repr: null
 
 dataset:
   _target_: cosmos_predict2.data.action.dataset_action.MimicDataset
   _convert_: partial
-  data_dir: /home/ubuntu/workspace/so101-world-model/data/action/processed/lerobot # TODO adapt this path
+  data_dir: /home/jbaur/projects/so101-world-model/data/action/lerobot # TODO adapt this path
   timestep_anchor: workspace_rgb
   data_components: ${..data_components}
   data_transforms: ${..data_transforms}

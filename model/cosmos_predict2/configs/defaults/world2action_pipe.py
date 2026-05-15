@@ -49,7 +49,7 @@ ACTION_DECODER_NETS = {
         crossattn_emb_channels=2048,
         use_adaln_lora=True,
         adaln_lora_dim=128,
-        pair_timestep_feature_rank=256,
+        pair_timestep_feature_rank=512,
         sac_config=SACConfig(mode="none", every_n_blocks=1),
     ),
 }
