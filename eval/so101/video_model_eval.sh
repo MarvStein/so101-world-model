@@ -45,7 +45,6 @@ bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
     --output-video "${OUTPUT_DIR}/task2_330_${ITER_TAG}.mp4" \
     --start-frame-index 100
 
-
 bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
     --dit-path "${DIT_PATH}" \
     --input-video "${WORKSPACE}/data/video_fine/lerobot/video/episode_500.mp4" \

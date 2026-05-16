@@ -143,6 +143,7 @@ def make_zarr(
     default_lang="",
     convert_degrees_to_radians=True,
     output_episode_idx: int | None = None,
+    dataset_tag: str = "",
 ):
     data_path = (
         raw_dir
@@ -276,6 +277,7 @@ def make_zarr(
 
     root: zarr.Group
     with zarr.open(str(out_path), mode="w") as root:
+        root.attrs["dataset_tag"] = dataset_tag
         root.create_dataset(
             "workspace_rgb",
             shape=images.shape,
@@ -361,6 +363,12 @@ def main():
         default="",
         help="Default language instruction when label is empty or bad.",
     )
+    ap.add_argument(
+        "--tag",
+        type=str,
+        default="",
+        help="Dataset tag written to each zarr's .zattrs when using --raw-dir (e.g. 'task1').",
+    )
 
     # all sorts of race conditions if you stress the file system too much so no parallelism
     args = ap.parse_args()
@@ -372,7 +380,7 @@ def main():
         episodes_df = read_episodes_df(args.raw_dir)
         for _, ep in episodes_df.iterrows():
             print(ep["episode_index"])
-            make_zarr(args.raw_dir, args.output_dir, ep, default_lang=args.default_lang)
+            make_zarr(args.raw_dir, args.output_dir, ep, default_lang=args.default_lang, dataset_tag=args.tag)
         return
 
     episode_offset = 0
@@ -395,6 +403,7 @@ def main():
                 REPO_ROOT / f"description_task{task_id}.txt",
             )
         
+        tag = f"task{task_id}"
         for _, ep in episodes_df.iterrows():
             source_ep_idx = int(ep["episode_index"])
             out_ep_idx = source_ep_idx + episode_offset
@@ -405,6 +414,7 @@ def main():
                 ep,
                 default_lang=task_lang,
                 output_episode_idx=out_ep_idx,
+                dataset_tag=tag,
             )
             
         episode_offset += len(episodes_df)

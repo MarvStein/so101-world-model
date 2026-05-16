@@ -63,6 +63,9 @@ To run preprocessing for action decoder training:
 source .venv/bin/activate
 python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/process_lerobot.py --output-dir /home/ubuntu/workspace/so101-world-model/data/action/processed
 # Language embedding computation
+deactivate
+cd ./model
+source .venv/bin/activate
 python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/precompute_t5.py --dataset-path /home/ubuntu/workspace/so101-world-model/data/action/processed/lerobot
 ```
 
@@ -82,7 +85,22 @@ Training the action decoder:
 Register the fine-tuned video model here: [world2action_model.py](model/cosmos_predict2/configs/defaults/world2action_model.py)
 Setup everything in [world2action.py](model/cosmos_predict2/configs/experiment/world2action.py)
 Change the video model and action model register order in [config.py](/home/jbaur/projects/so101-world-model/model/cosmos_predict2/configs/config.py). The video model should be registered first.
-Adapt the paths in [lerobot.yaml](model/cosmos_predict2/configs/dataloading/dataset/lerobot.yaml)
+Adapt the paths and supply the relevant **task tags** for which you want to train the action decoder in [lerobot.yaml](model/cosmos_predict2/configs/dataloading/dataset/lerobot.yaml)
+
+Available tags, can also be supplied as list with [task1 task13]:
+
+task1: just task1
+task2: just task2
+task12: task1 with blue cube
+task13: task1 with red cube
+task22: task2 with blue cube
+task23: task2 with red cube
+
+
+You can test task filtering with [test_tag_filtering.py](projects/so101-world-model/model/scripts/test_tag_filtering.py)
+```bash
+python scripts/test_tag_filtering.py --tags task1 task12 task13
+```
 
 Run:
 ```bash

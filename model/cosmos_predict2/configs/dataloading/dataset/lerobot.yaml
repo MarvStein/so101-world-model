@@ -31,3 +31,4 @@ dataset:
   should_include_padded_tails: True
   seed: 42
   num_val_episodes: 10
+  tags: null  # list of dataset_tag strings to include (e.g. [task1, task12]); null = all episodes
