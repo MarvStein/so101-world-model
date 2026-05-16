@@ -24,21 +24,21 @@ mkdir -p "${OUTPUT_DIR}"
 ITER=$(basename "${DIT_PATH}" | grep -oP 'iter_\K[0-9]+' | sed 's/^0*//' || echo "unknown")
 ITER_TAG="iter${ITER}"
 
-bash "${WORKSPACE}/scripts/run_video2world_5cond.sh" \
+bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
     --dit-path "${DIT_PATH}" \
     --input-video "${WORKSPACE}/data/video_fine/lerobot/video/episode_021.mp4" \
     --prompt "Push the target object, in this case the white polyhedron, in a straight line to the goal position which is the smaller of the two white circles seen on the left. The target object is not allowed to leave the area bounded by the two parallel straight white lines at anytime." \
     --output-video "${OUTPUT_DIR}/task1_021_${ITER_TAG}.mp4" \
     --start-frame-index 50
 
-bash "${WORKSPACE}/scripts/run_video2world_5cond.sh" \
+bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
     --dit-path "${DIT_PATH}" \
     --input-video "${WORKSPACE}/data/video_fine/lerobot/video/episode_340.mp4" \
     --prompt "Push the target object, in this case the white polyhedron, around the obstacle, a red cylinder laying in the big white circle, to the goal position which is the smaller of the two white circles seen on the left. The target object can leave the area bounded by the two parallel white straight lines. The target object is not allowed to touch the red cylinder at all!" \
     --output-video "${OUTPUT_DIR}/task2_340_${ITER_TAG}.mp4" \
     --start-frame-index 45
 
-bash "${WORKSPACE}/scripts/run_video2world_5cond.sh" \
+bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
     --dit-path "${DIT_PATH}" \
     --input-video "${WORKSPACE}/data/video_fine/lerobot/video/episode_330.mp4" \
     --prompt "Push the target object, in this case the white polyhedron, around the obstacle, a red cylinder laying in the big white circle, to the goal position which is the smaller of the two white circles seen on the left. The target object can leave the area bounded by the two parallel white straight lines. The target object is not allowed to touch the red cylinder at all!" \
@@ -46,14 +46,14 @@ bash "${WORKSPACE}/scripts/run_video2world_5cond.sh" \
     --start-frame-index 100
 
 
-bash "${WORKSPACE}/scripts/run_video2world_5cond.sh" \
+bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
     --dit-path "${DIT_PATH}" \
     --input-video "${WORKSPACE}/data/video_fine/lerobot/video/episode_500.mp4" \
     --prompt "Push the target object, in this case the blue cube, around the obstacle, a red cylinder laying in the big white circle, to the goal position which is the smaller of the two white circles seen on the left. The target object can leave the area bounded by the two parallel white straight lines. The target object is not allowed to touch the red cylinder at all!" \
     --output-video "${OUTPUT_DIR}/task22_500_${ITER_TAG}.mp4" \
     --start-frame-index 40
 
-bash "${WORKSPACE}/scripts/run_video2world_5cond.sh" \
+bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
     --dit-path "${DIT_PATH}" \
     --input-video "${WORKSPACE}/data/video_fine/lerobot/video/episode_450.mp4" \
     --prompt "Push the target object, in this case the blue cube, around the obstacle, a red cylinder laying in the big white circle, to the goal position which is the smaller of the two white circles seen on the left. The target object can leave the area bounded by the two parallel white straight lines. The target object is not allowed to touch the red cylinder at all!" \
