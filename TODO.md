@@ -40,6 +40,7 @@ python get_t5_embeddings.py --dataset_path ../../data/lerobot
 
 # finetune
 # Change the video model and action model register order in [config.py](/home/jbaur/projects/so101-world-model/model/cosmos_predict2/configs/config.py). The video model should be registered after action model.
+# Adapt path here: [data_video.py](so101-world-model/model/cosmos_predict2/configs/defaults/data_video.py)
 torchrun --nproc_per_node=<NUM_GPUS> -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment="v2w_lerobot-so101_custom"
 ```
 

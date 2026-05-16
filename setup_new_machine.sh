@@ -101,9 +101,10 @@ if [[ "$SKIP_DATA" == false ]]; then
     echo "[4b/5] Computing T5 embeddings for video finetuning..."
     LEROBOT_VIDEO_DIR="$DATA_DIR/video_fine/lerobot"
     cd "$REPO_ROOT/model"
-    uv run python ../data_preprocessing/video/get_t5_embeddings.py \
+    source .venv/bin/activate
+    python ../data_preprocessing/video/get_t5_embeddings.py \
         --dataset_path "$LEROBOT_VIDEO_DIR"
-
+    deactivate
     # -- 4c. Process lerobot action data (zarr for action decoder) ------------
     echo ""
     echo "[4c/5] Processing LeRobot action data to zarr..."
@@ -118,8 +119,12 @@ if [[ "$SKIP_DATA" == false ]]; then
     echo ""
     echo "[4d/5] Computing T5 language embeddings for action zarrs..."
     cd "$REPO_ROOT/model"
-    uv run python ../data_preprocessing/action/precompute_t5.py \
+    source .venv/bin/activate
+    python ../data_preprocessing/action/precompute_t5.py \
         --dataset-path "$ACTION_ZARR_DIR/lerobot"
+    deactivate
+
+    bash "$REPO_ROOT/model/fix_cuda_libs.sh"
 
     echo ""
     echo "  Data preprocessing complete."

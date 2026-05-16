@@ -20,6 +20,7 @@ from megatron.core import parallel_state
 from omegaconf import MISSING
 
 from cosmos_predict2.callbacks.video_eval import VideoEvalCallback
+from cosmos_predict2.callbacks.wandb_logger import WandbLogger
 from cosmos_predict2.configs.defaults.data_video import train_datasets
 from imaginaire.lazy_config import LazyCall as L
 
@@ -124,7 +125,7 @@ so101_cfg["defaults"][1]["override /video_dataset_train"] = "lerobot-so101"
 so101_cfg["defaults"][2]["override /video_dataset_val"] = "lerobot-so101"
 so101_cfg["optimizer"]["lr"] = 1e-4
 so101_cfg["job"]["name"] = "v2w_lerobot-so101_custom"
-so101_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=1)}
+so101_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=4)}
 so101_cfg["model"]["config"].update(dict(
     train_architecture="lora",
     lora_rank=256,
@@ -134,6 +135,8 @@ so101_cfg["model"]["config"].update(dict(
 ))
 so101_cfg["trainer"]["callbacks"]["video_eval"]["fuse_lora"] = True
 so101_cfg["checkpoint"] = {"save_iter": 1000}
+
+so101_cfg["trainer"]["callbacks"]["wandb_logger"] = L(WandbLogger)(every_n=20, project="wm-so101", name="v2w_lerobot_so101_bs4_lr1e-4_rank256")
 
 cs.store(
     group="experiment",
