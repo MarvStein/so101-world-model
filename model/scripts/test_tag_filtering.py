@@ -33,6 +33,8 @@ def print_tag_distribution(data_dir: pathlib.Path) -> dict[str, int]:
         try:
             root = zarr.open(str(p), mode="r")
             tag = root.attrs.get("dataset_tag", "") or "<none>"
+            if tag == "<none>":
+                print(f"WARNING: episode {p} has no dataset_tag!")
         except Exception:
             tag = "<error>"
         tag_counts[tag] = tag_counts.get(tag, 0) + 1

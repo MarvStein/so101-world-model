@@ -49,12 +49,12 @@ BASE: dict = dict(
         cpu_offloading_activations=False,
         cpu_offloading_weights=False,
     ),
-    checkpoint=dict(save_iter=1_000),
+    checkpoint=dict(save_iter=250),
     trainer=dict(
         distributed_parallelism="ddp",
         grad_accum_iter=1,
         max_iter=500_000,
-        logging_iter=1_000,
+        logging_iter=20,
         validation_iter=1_000,
         run_validation=True,
     ),
@@ -114,20 +114,21 @@ for video_ckpt, data_config, xattn_layer_idx, lr, bsz in it.product(
 
 # Add manual lerobot experiment
 lerobot_cfg = copy.deepcopy(BASE)
-lerobot_cfg["defaults"][0]["override /model"] = "iter_000003000_fused" # register this model in model/cosmos_predict2/configs/defaults/world2action_model.py
+lerobot_cfg["defaults"][0]["override /model"] = "iter_000011000_fused" # register this model in model/cosmos_predict2/configs/defaults/world2action_model.py
 lerobot_cfg["defaults"][1]["override /world2action_pipe"] = "lerobot"
 lerobot_cfg["defaults"][2]["override /data_config"] = "lerobot"
 lerobot_cfg["model"]["config"]["pipe_config"]["xattn_layer_idx"] = 20
 lerobot_cfg["optimizer"]["lr"] = 1e-4
 lerobot_cfg["job"]["group"] = "lerobot"
-lerobot_cfg["job"]["name"] = "w2a_lerobot_v2w_3000_lr1.000e-04"
-lerobot_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=1)}
-# lerobot_cfg["trainer"]["run_validation"] = False
+lerobot_cfg["job"]["name"] = "w2a_lerobot_v2w_11k_lr1e-04_bs16"
+lerobot_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=16)}
+lerobot_cfg["trainer"]["run_validation"] = False
+
 
 cs.store(
     group="experiment",
     package="_global_",
-    name="w2a_lerobot_v2w_3000_lr1.000e-04",
+    name="w2a_lerobot_v2w_11k_lr1e-04_bs16",
     node=lerobot_cfg,
 )
 

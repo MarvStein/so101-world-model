@@ -26,6 +26,20 @@ ITER_TAG="iter${ITER}"
 
 bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
     --dit-path "${DIT_PATH}" \
+    --input-video "${WORKSPACE}/data/video_fine/lerobot/video/episode_030.mp4" \
+    --prompt "Push the target object, in this case the white polyhedron, in a straight line to the goal position which is the smaller of the two white circles seen on the left. The target object is not allowed to leave the area bounded by the two parallel straight white lines at anytime." \
+    --output-video "${OUTPUT_DIR}/task1_030_${ITER_TAG}.mp4" \
+    --start-frame-index 65
+
+bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
+    --dit-path "${DIT_PATH}" \
+    --input-video "${WORKSPACE}/data/video_fine/lerobot/video/episode_040.mp4" \
+    --prompt "Push the target object, in this case the white polyhedron, in a straight line to the goal position which is the smaller of the two white circles seen on the left. The target object is not allowed to leave the area bounded by the two parallel straight white lines at anytime." \
+    --output-video "${OUTPUT_DIR}/task1_040_${ITER_TAG}.mp4" \
+    --start-frame-index 65
+
+bash "${WORKSPACE}/model/scripts/run_video2world_5cond.sh" \
+    --dit-path "${DIT_PATH}" \
     --input-video "${WORKSPACE}/data/video_fine/lerobot/video/episode_021.mp4" \
     --prompt "Push the target object, in this case the white polyhedron, in a straight line to the goal position which is the smaller of the two white circles seen on the left. The target object is not allowed to leave the area bounded by the two parallel straight white lines at anytime." \
     --output-video "${OUTPUT_DIR}/task1_021_${ITER_TAG}.mp4" \

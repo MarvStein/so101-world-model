@@ -37,10 +37,12 @@ cd model
 source .venv/bin/activate # activate the cosmos-predict2 venv for running the rest
 cd ../data_preprocessing/video/
 python get_t5_embeddings.py --dataset_path ../../data/lerobot
+```
 
-# finetune
-# Change the video model and action model register order in [config.py](/home/jbaur/projects/so101-world-model/model/cosmos_predict2/configs/config.py). The video model should be registered after action model.
-# Adapt path here: [data_video.py](so101-world-model/model/cosmos_predict2/configs/defaults/data_video.py)
+Finetune
+Change the video model and action model register order in [config.py](model/cosmos_predict2/configs/config.py). The video model should be registered after action model.
+Adapt path here: [data_video.py](model/cosmos_predict2/configs/defaults/data_video.py)
+```bash
 torchrun --nproc_per_node=<NUM_GPUS> -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment="v2w_lerobot-so101_custom"
 ```
 
@@ -66,7 +68,7 @@ python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/proces
 deactivate
 cd ./model
 source .venv/bin/activate
-python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/precompute_t5.py --dataset-path /home/ubuntu/workspace/so101-world-model/data/action/processed/lerobot
+python ../data_preprocessing/action/precompute_t5.py --dataset-path ../data/action/lerobot
 ```
 
 Then run precomputation pipeline:
@@ -82,13 +84,14 @@ python scripts/precompute_video_embeddings.py \
 ```
 
 Training the action decoder:
-Register the fine-tuned video model here: [world2action_model.py](model/cosmos_predict2/configs/defaults/world2action_model.py)
-Setup everything in [world2action.py](model/cosmos_predict2/configs/experiment/world2action.py)
-Change the video model and action model register order in [config.py](/home/jbaur/projects/so101-world-model/model/cosmos_predict2/configs/config.py). The video model should be registered first.
-Adapt the paths and supply the relevant **task tags** for which you want to train the action decoder in [lerobot.yaml](model/cosmos_predict2/configs/dataloading/dataset/lerobot.yaml)
+1. Register the fine-tuned video model here: [world2action_model.py](model/cosmos_predict2/configs/defaults/world2action_model.py)
+2. Setup experiment and everything in [world2action.py](model/cosmos_predict2/configs/experiment/world2action.py)
+3. Change the video model and action model register order in [config.py](model/cosmos_predict2/configs/config.py). The video model should be registered first.
+4. Adapt the paths and supply the relevant **task tags** for which you want to train the action decoder in [lerobot.yaml](model/cosmos_predict2/configs/dataloading/dataset/lerobot.yaml)
 
 Available tags, can also be supplied as list with [task1 task13]:
 
+none: all tasks
 task1: just task1
 task2: just task2
 task12: task1 with blue cube
@@ -99,7 +102,7 @@ task23: task2 with red cube
 
 You can test task filtering with [test_tag_filtering.py](projects/so101-world-model/model/scripts/test_tag_filtering.py)
 ```bash
-python scripts/test_tag_filtering.py --tags task1 task12 task13
+python ./model/scripts/test_tag_filtering.py --tags task1 task12 task13 --data-dir pathto/action/lerobot
 ```
 
 Run:
@@ -107,7 +110,7 @@ Run:
 deactivate
 cd model
 source .venv/bin/activate
-torchrun -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment="experiment name"
+torchrun --nproc_per_node=2 -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment="v2w_lerobot-so101_bs4_10fps"
 ```
 
 # BACKLOG

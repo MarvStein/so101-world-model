@@ -124,7 +124,7 @@ so101_cfg = copy.deepcopy(BASE)
 so101_cfg["defaults"][1]["override /video_dataset_train"] = "lerobot-so101"
 so101_cfg["defaults"][2]["override /video_dataset_val"] = "lerobot-so101"
 so101_cfg["optimizer"]["lr"] = 1e-4
-so101_cfg["job"]["name"] = "v2w_lerobot-so101_custom"
+so101_cfg["job"]["name"] = "v2w_lerobot-so101_bs4_10fps"
 so101_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=4)}
 so101_cfg["model"]["config"].update(dict(
     train_architecture="lora",
@@ -134,13 +134,13 @@ so101_cfg["model"]["config"].update(dict(
     lora_target_modules="q_proj,k_proj,v_proj,output_proj,x_embedder.proj.1,linear_1,linear_2,mlp.layer1,mlp.layer2",
 ))
 so101_cfg["trainer"]["callbacks"]["video_eval"]["fuse_lora"] = True
-so101_cfg["checkpoint"] = {"save_iter": 1000}
+so101_cfg["checkpoint"] = {"save_iter": 500}
 
-so101_cfg["trainer"]["callbacks"]["wandb_logger"] = L(WandbLogger)(every_n=20, project="wm-so101", name="v2w_lerobot_so101_bs4_lr1e-4_rank256")
+so101_cfg["trainer"]["callbacks"]["wandb_logger"] = L(WandbLogger)(every_n=20, project="wm-so101", name="v2w_lerobot_so101_bs4_10fps_lr1e-4_rank256")
 
 cs.store(
     group="experiment",
     package="_global_",
-    name="v2w_lerobot-so101_custom",
+    name="v2w_lerobot-so101_bs4_10fps",
     node=so101_cfg,
 )
