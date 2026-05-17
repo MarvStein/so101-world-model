@@ -6,14 +6,74 @@ We have to do Video Model Finetuning with the LeRobot dataset and then Action De
 Run this in the root directory of the repo. Create a ./data/ folder and provide the path
 
 ```bash
-bash setup_new_machine.sh --data-dir ./path/to/data_folder
+bash setup_new_machine.sh --data-dir ./data
 ```
 
 ## Inference
 - [-] Write the inference pipeline that runs on a 5090
-    First draft by Claude is done, needs to be tested on hardware as soon as we have a trained action decoder!!
+    Done, needs to be tested on hardware as soon as we have a trained action decoder!!
 
-See [run.py](/home/jbaur-lt/projects/so101-world-model/eval/so101/run.py)
+The model environment uses **numpy 1.26.4** but lerobot requires **numpy 2.x**, so the
+pipeline is split into two processes that talk over a ZeroMQ IPC socket:
+- [model_server.py](eval/so101/model_server.py) — model env, GPU inference
+- [robot_controller.py](eval/so101/robot_controller.py) — lerobot env, robot control
+- [eval.sh](eval/so101/eval.sh) — launches both, wires them together, cleans up
+
+The original monolithic [run.py](eval/so101/run.py) is kept for reference but **cannot
+run** without resolving the numpy conflict.
+
+### One-time setup: install pyzmq in both environments
+```bash
+# Model environment
+cd model && source .venv/bin/activate
+pip install pyzmq
+deactivate
+
+# LeRobot / so101 conda environment
+conda run -n so101 pip install pyzmq
+```
+
+> **Note on CUDA libs (no sudo needed):** `transformer_engine` searches for
+> `libnvrtc` via `ldconfig`. Since we can't register the venv's bundled CUDA
+> libs without root, `eval.sh` automatically creates a temporary `ldconfig`
+> shim that augments the real output with the venv's `nvidia/cuda_nvrtc/lib`
+> entries. No manual `fix_cuda_libs.sh` run is required.
+
+### To run inference:
+
+First, find your camera device:
+```bash
+v4l2-ctl --list-devices
+```
+
+Then run via `eval.sh`, pointing it to the two Python interpreters:
+```bash
+MODEL_PYTHON=/home/team01/projects/so101-world-model/model/.venv/bin/python \
+LEROBOT_PYTHON=/home/team01/.conda/envs/so101/bin/python \
+bash eval/so101/eval.sh \
+    --video_model /home/team01/projects/so101-world-model/model/checkpoints/v2w_11000_fused.pt \
+    --action_model /home/team01/projects/so101-world-model/model/checkpoints/w2a_000003250.pt \
+    --stats_path /home/team01/projects/so101-world-model/data/action/lerobot/.statistics_cache/cf89be487e1fc98411666c8fb142a6e0f73086fe4e45c39a71fdaffe48cb03dc.json \
+    --camera_index 0 \
+    --robot_port /dev/ttyACM0 \
+    --fps 10 \
+    --num_execute_actions 8 \
+    --max_steps 20 \
+    --task_description "Push the target object, in this case the orange cube, in a straight line to the goal position which is the smaller of the two white circles seen on the left. The target object is not allowed to leave the area bounded by the two parallel straight white lines at anytime."
+```
+
+`eval.sh` auto-discovers the two interpreters from standard venv locations
+(`.venv-model/`, `.venv-lerobot/`, `~/.venvs/…`) — set `MODEL_PYTHON` /
+`LEROBOT_PYTHON` explicitly if yours are somewhere else.
+
+Optional parameters (forwarded to both scripts; each ignores what it doesn't own):
+- `--experiment`: Experiment config name (default: w2a_lerobot_v2w_11k_lr1e-04_bs16)
+- `--camera_key`: Observation dict key for front camera (default: "front")
+- `--stop_denoising_step`: Early-stop video denoising (default: 20; pass 35 for full quality)
+- `--still_threshold`: Motion detection threshold in grayscale diff (default: 3.0)
+- `--max_wait_s`: Max time to wait for scene to settle (default: 10.0)
+- `--recv_timeout_ms`: How long the controller waits for a model reply before erroring (default: 300000)
+- `--log_level`: DEBUG, INFO, WARNING, ERROR (default: INFO)
 
 ## Video Model Finetuning
 
