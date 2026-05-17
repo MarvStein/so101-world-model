@@ -2,7 +2,8 @@
 
 We have to do Video Model Finetuning with the LeRobot dataset and then Action Decoder Pretraining. For that, we also need to setup brev completely to be able to run everything on the H100.
 
-## First time setup on a new instance
+## First time setup on a new **training** GPU instance
+Please ignore if you want to do inference.
 Run this in the root directory of the repo. Create a ./data/ folder and provide the path
 
 ```bash
@@ -10,8 +11,48 @@ bash setup_new_machine.sh --data-dir ./data
 ```
 
 ## Inference
-- [-] Write the inference pipeline that runs on a 5090
-    Done, needs to be tested on hardware as soon as we have a trained action decoder!!
+
+[Jere, 17.5.26, 22:48]
+Tomorrow try to install uv: 
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+Then install the base environment in the root of the repo:
+```bash
+uv venv --python 3.10
+uv pip install -r requirements.txt
+```
+
+Deactivate the base env and create the model env:
+```bash
+deactivate
+cd ./model
+```
+
+**On a Blackwell GPU (RTX 5090):** `pyproject_gemini.toml` contains the
+cu128 index and the `blackwell` optional-dependency group needed for
+`apex`, `flash-attn-4`, `natten`, `transformer-engine`, and the matching
+`torch`/`torchvision` builds.  `uv sync` (not `uv pip install`) is required
+so that the `[tool.uv]` keys (`no-build-package`, conditional `sources`) are
+respected — they are silently ignored by plain pip.
+
+```bash
+# Replace pyproject.toml with the Blackwell-compatible version
+cp pyproject_gemini.toml pyproject.toml
+# Create the venv and install everything including the blackwell extras
+uv venv --python 3.10
+uv sync --extra blackwell
+# Install pyzmq for ZeroMQ IPC with the robot controller
+uv pip install pyzmq
+```
+
+**On any other GPU (H100, A100, …):** use the original `pyproject.toml`
+as-is:
+
+```bash
+uv venv --python 3.10
+uv pip install pyzmq
+```
 
 The model environment uses **numpy 1.26.4** but lerobot requires **numpy 2.x**, so the
 pipeline is split into two processes that talk over a ZeroMQ IPC socket:
@@ -22,22 +63,6 @@ pipeline is split into two processes that talk over a ZeroMQ IPC socket:
 The original monolithic [run.py](eval/so101/run.py) is kept for reference but **cannot
 run** without resolving the numpy conflict.
 
-### One-time setup: install pyzmq in both environments
-```bash
-# Model environment
-cd model && source .venv/bin/activate
-pip install pyzmq
-deactivate
-
-# LeRobot / so101 conda environment
-conda run -n so101 pip install pyzmq
-```
-
-> **Note on CUDA libs (no sudo needed):** `transformer_engine` searches for
-> `libnvrtc` via `ldconfig`. Since we can't register the venv's bundled CUDA
-> libs without root, `eval.sh` automatically creates a temporary `ldconfig`
-> shim that augments the real output with the venv's `nvidia/cuda_nvrtc/lib`
-> entries. No manual `fix_cuda_libs.sh` run is required.
 
 ### To run inference:
 
@@ -46,7 +71,61 @@ First, find your camera device:
 v4l2-ctl --list-devices
 ```
 
-Then run via `eval.sh`, pointing it to the two Python interpreters:
+#### One-time: precompute T5 embeddings (run on training instance, not on 5090)
+(Already done!!)
+The RTX 5090 deployment machine only has 50 GB of storage, so we cannot
+download the T5-11B model there.  Instead, precompute the embeddings for all
+tasks once on any machine that has the model env set up, then copy the ~6 MB
+output file to the deployment machine.
+
+```bash
+# On the training / H100 instance (model venv):
+cd /path/to/so101-world-model
+source model/.venv/bin/activate
+PYTHONPATH=model python eval/so101/precompute_task_embeddings.py \
+    --output_path eval/so101/task_embeddings.pt
+```
+
+This produces `eval/so101/task_embeddings.pt` — a dict keyed by task ID
+(`"1"`, `"2"`, `"12"`, `"13"`, `"22"`, `"23"`), each value a
+`(1, 512, 1024)` float16 tensor.  Copy this file to the deployment machine.
+
+#### Running inference with precomputed embeddings (recommended for 5090)
+
+Pass `--task <id>` and `--embeddings_path` to skip loading the T5 model
+entirely (~22 GB saved).  Available task IDs:
+
+| ID  | Object        | Variant              |
+|-----|---------------|----------------------|
+| 1   | white polyhedron | straight line     |
+| 2   | white polyhedron | around obstacle  |
+| 12  | blue cube     | straight line        |
+| 13  | orange cube   | straight line        |
+| 22  | blue cube     | around obstacle      |
+| 23  | orange cube   | around obstacle      |
+
+Adapt the task tag accordingly!!!
+```bash
+MODEL_PYTHON=/home/team01/projects/so101-world-model/model/.venv/bin/python \
+LEROBOT_PYTHON=/home/team01/.conda/envs/so101/bin/python \
+bash eval/so101/eval.sh \
+    --video_model /home/team01/projects/so101-world-model/model/checkpoints/v2w_11000_fused.pt \
+    --action_model /home/team01/projects/so101-world-model/model/checkpoints/w2a_000003250.pt \
+    --stats_path /home/team01/projects/so101-world-model/data/action/lerobot/.statistics_cache/cf89be487e1fc98411666c8fb142a6e0f73086fe4e45c39a71fdaffe48cb03dc.json \
+    --task 13 \
+    --embeddings_path /home/team01/projects/so101-world-model/eval/so101/task_embeddings.pt \
+    --camera_index 0 \
+    --robot_port /dev/ttyACM0 \
+    --fps 10 \
+    --num_execute_actions 8 \
+    --max_steps 20
+```
+
+#### Running inference without precomputed embeddings (requires T5 model)
+(Ignore)
+If the T5 model is available locally, you can pass the full task description
+directly (T5 will be loaded at startup):
+
 ```bash
 MODEL_PYTHON=/home/team01/projects/so101-world-model/model/.venv/bin/python \
 LEROBOT_PYTHON=/home/team01/.conda/envs/so101/bin/python \
@@ -67,6 +146,8 @@ bash eval/so101/eval.sh \
 `LEROBOT_PYTHON` explicitly if yours are somewhere else.
 
 Optional parameters (forwarded to both scripts; each ignores what it doesn't own):
+- `--task <id>`: Task ID shorthand — reads description from `description_task{id}.txt`
+- `--embeddings_path`: Path to precomputed `.pt` file; skips T5 loading (requires `--task`)
 - `--experiment`: Experiment config name (default: w2a_lerobot_v2w_11k_lr1e-04_bs16)
 - `--camera_key`: Observation dict key for front camera (default: "front")
 - `--stop_denoising_step`: Early-stop video denoising (default: 20; pass 35 for full quality)
