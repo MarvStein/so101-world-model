@@ -107,11 +107,17 @@ def load_pipeline(
     action_model_path: str,
     stats_path: pathlib.Path,
     experiment_name: str = DEFAULT_EXPERIMENT,
+    use_text_encoder: bool = True,
 ) -> Video2World2ActionPipeline:
     """Load the Video2World2Action pipeline and initialise the normaliser from stats.
 
     Mirrors eval/bridge/SimplerEnv/simpler_env/policies/vam/video_action_model.py::
     load_video2world2action_pipeline().
+
+    When *use_text_encoder* is False the T5-11B model is not loaded at all,
+    which saves ~22 GB of storage / VRAM on the deployment machine.  In that
+    case the caller must supply a precomputed *task_embedding* to
+    :func:`run_episode`.
     """
     config = make_config()
     config = override(config, ["--", f"experiment={experiment_name}"])
@@ -125,6 +131,7 @@ def load_pipeline(
         device="cuda",
         torch_dtype=torch.bfloat16,
         load_ema_to_reg=False,
+        use_text_encoder=use_text_encoder,
     )
 
     world2action_pipe = World2ActionPipeline.from_config(
@@ -310,6 +317,7 @@ def run_episode(
     still_threshold: float,
     max_wait_s: float,
     max_steps: int,
+    task_embedding: torch.Tensor | None = None,
 ) -> None:
     """Run one closed-loop episode.
 
@@ -321,7 +329,8 @@ def run_episode(
     Args:
         robot: connected SO101Follower.
         model: loaded Video2World2ActionPipeline on CUDA in eval mode.
-        task_description: natural-language task prompt.
+        task_description: natural-language task prompt (used as fallback when
+            *task_embedding* is None, and always logged for reference).
         camera_key: observation dict key for the front camera.
         fps: robot control frequency (Hz); determines sleep between actions.
         num_execute_actions: how many actions from the predicted chunk to execute.
@@ -330,6 +339,9 @@ def run_episode(
         still_threshold: per-pixel grayscale diff threshold for motion detection.
         max_wait_s: maximum seconds to wait for scene to settle per chunk.
         max_steps: maximum number of model inference calls.
+        task_embedding: optional precomputed T5 embedding of shape
+            (1, 512, 1024) on CUDA as bfloat16.  When provided the text
+            encoder is bypassed entirely.
     """
     step_period = 1.0 / fps
 
@@ -379,6 +391,7 @@ def run_episode(
             input_vid=input_vid,
             state_B_HO_O=state_tensor,
             prompt=task_description,
+            prompt_embedding=task_embedding,
             num_sampling_step=35,
             stop_after_step=stop_denoising_step,
             use_cuda_graphs=True,
@@ -495,8 +508,29 @@ def parse_args() -> argparse.Namespace:
 
     # ── Task ─────────────────────────────────────────────────────────────────
     g = p.add_argument_group("Task")
+    g.add_argument(
+        "--task",
+        default=None,
+        metavar="ID",
+        help=(
+            "Task ID shorthand (e.g. '1', '13').  Reads the description from "
+            "description_task{ID}.txt in the repo root and uses it as the task "
+            "prompt.  Takes precedence over --task_description when both are given."
+        ),
+    )
     g.add_argument("--task_description", default=default_task,
-                   help="Natural-language task prompt fed to the video model.")
+                   help="Natural-language task prompt fed to the video model. "
+                        "Ignored when --task is set.")
+    g.add_argument(
+        "--embeddings_path",
+        default=None,
+        help=(
+            "Path to the precomputed task-embeddings .pt file produced by "
+            "eval/so101/precompute_task_embeddings.py.  When supplied the T5 "
+            "text encoder is NOT loaded, saving ~22 GB of storage / VRAM. "
+            "Requires --task to be set."
+        ),
+    )
 
     # ── Control ──────────────────────────────────────────────────────────────
     g = p.add_argument_group("Control")
@@ -535,13 +569,57 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
-    # ── Load model ────────────────────────────────────────────────────────────
-    logger.info("Loading Video2World2Action pipeline ...")
+    # -- Resolve task description and optional precomputed embedding ----------
+    repo_root = pathlib.Path(__file__).parents[2]
+    if args.task is not None:
+        task_file = repo_root / f"description_task{args.task}.txt"
+        if not task_file.exists():
+            raise SystemExit(
+                f"ERROR: task file not found: {task_file}\n"
+                "Available tasks: " +
+                ", ".join(
+                    f.stem.replace("description_task", "")
+                    for f in sorted(repo_root.glob("description_task*.txt"))
+                )
+            )
+        args.task_description = task_file.read_text(encoding="utf-8").strip()
+        logger.info("Using task %s: %s", args.task, args.task_description)
+
+    if args.embeddings_path and not args.task:
+        raise SystemExit(
+            "ERROR: --task is required when --embeddings_path is set. "
+            "Example: --task 1  or  --task 13"
+        )
+
+    task_embedding: torch.Tensor | None = None
+    use_text_encoder = True
+    if args.embeddings_path:
+        embeddings_path = pathlib.Path(args.embeddings_path)
+        logger.info("Loading precomputed embeddings from %s ...", embeddings_path)
+        embeddings: dict[str, torch.Tensor] = torch.load(
+            embeddings_path, map_location="cpu", weights_only=True
+        )
+        if args.task not in embeddings:
+            available = sorted(embeddings.keys())
+            raise KeyError(
+                f"Task {args.task!r} not found in {embeddings_path}. "
+                f"Available task IDs: {available}"
+            )
+        task_embedding = embeddings[args.task].to(device="cuda", dtype=torch.bfloat16)
+        logger.info(
+            "Loaded embedding for task %r -- shape %s",
+            args.task, tuple(task_embedding.shape),
+        )
+        use_text_encoder = False
+
+    # -- Load model -----------------------------------------------------------
+    logger.info("Loading Video2World2Action pipeline (use_text_encoder=%s) ...", use_text_encoder)
     model = load_pipeline(
         video_model_path=args.video_model,
         action_model_path=args.action_model,
         stats_path=pathlib.Path(args.stats_path),
         experiment_name=args.experiment,
+        use_text_encoder=use_text_encoder,
     )
     model.eval()
     logger.info("Pipeline loaded and in eval mode.")
@@ -585,6 +663,7 @@ def main() -> None:
             still_threshold=args.still_threshold,
             max_wait_s=args.max_wait_s,
             max_steps=args.max_steps,
+            task_embedding=task_embedding,
         )
 
         logger.info("Episode complete.")

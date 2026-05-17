@@ -110,8 +110,15 @@ def load_pipeline(
     action_model_path: str,
     stats_path: pathlib.Path,
     experiment_name: str = DEFAULT_EXPERIMENT,
+    use_text_encoder: bool = True,
 ) -> Video2World2ActionPipeline:
-    """Load the Video2World2Action pipeline and initialise the normaliser."""
+    """Load the Video2World2Action pipeline and initialise the normaliser.
+
+    When *use_text_encoder* is False the T5-11B model is not loaded at all,
+    which saves ~22 GB of storage / VRAM on the deployment machine.  In that
+    case the caller must supply a precomputed *prompt_embedding* tensor to
+    every :func:`run_inference` call.
+    """
     config = make_config()
     config = override(config, ["--", f"experiment={experiment_name}"])
 
@@ -124,6 +131,7 @@ def load_pipeline(
         device="cuda",
         torch_dtype=torch.bfloat16,
         load_ema_to_reg=False,
+        use_text_encoder=use_text_encoder,
     )
 
     world2action_pipe = World2ActionPipeline.from_config(
@@ -158,14 +166,18 @@ def run_inference(
     header: dict,
     img_bytes: bytes,
     state_bytes: bytes,
+    prompt_embedding: torch.Tensor | None = None,
 ) -> tuple[dict, bytes]:
     """Deserialise the request, run the model, return (response_header, actions_bytes).
 
     Args:
-        model:      Loaded pipeline in eval mode on CUDA.
-        header:     Decoded JSON header from the client request.
-        img_bytes:  Raw bytes of the float32 image array (C-contiguous).
-        state_bytes: Raw bytes of the float32 state array (C-contiguous).
+        model:            Loaded pipeline in eval mode on CUDA.
+        header:           Decoded JSON header from the client request.
+        img_bytes:        Raw bytes of the float32 image array (C-contiguous).
+        state_bytes:      Raw bytes of the float32 state array (C-contiguous).
+        prompt_embedding: Optional precomputed T5 embedding of shape
+                          (1, 512, 1024) on CUDA as bfloat16.  When provided
+                          the pipeline skips the text-encoder call entirely.
 
     Returns:
         Tuple of the JSON-serialisable response header dict and the raw
@@ -195,6 +207,7 @@ def run_inference(
         input_vid=input_vid,
         state_B_HO_O=state_tensor,
         prompt=header["task"],
+        prompt_embedding=prompt_embedding,
         num_sampling_step=header["num_sampling_step"],
         stop_after_step=header.get("stop_denoising_step"),  # None → full denoising
         use_cuda_graphs=True,
@@ -236,13 +249,38 @@ def serve(args: argparse.Namespace) -> None:
     sock.bind(f"ipc://{args.socket_path}")
     logger.info("ZMQ REP socket bound at ipc://%s", args.socket_path)
 
+    # ---------------------------------------------------------------------------
+    # Load precomputed task embedding (optional — skips T5 on deployment machine)
+    # ---------------------------------------------------------------------------
+    task_embedding: torch.Tensor | None = None
+    use_text_encoder = True
+    if args.embeddings_path:
+        embeddings_path = pathlib.Path(args.embeddings_path)
+        logger.info("Loading precomputed embeddings from %s ...", embeddings_path)
+        embeddings: dict[str, torch.Tensor] = torch.load(
+            embeddings_path, map_location="cpu", weights_only=True
+        )
+        if args.task not in embeddings:
+            available = sorted(embeddings.keys())
+            raise KeyError(
+                f"Task {args.task!r} not found in {embeddings_path}. "
+                f"Available task IDs: {available}"
+            )
+        task_embedding = embeddings[args.task].to(device="cuda", dtype=torch.bfloat16)
+        logger.info(
+            "Loaded embedding for task %r — shape %s, dtype %s",
+            args.task, tuple(task_embedding.shape), task_embedding.dtype,
+        )
+        use_text_encoder = False
+
     # Load the model AFTER binding so the OS can queue early client messages.
-    logger.info("Loading Video2World2Action pipeline ...")
+    logger.info("Loading Video2World2Action pipeline (use_text_encoder=%s) ...", use_text_encoder)
     model = load_pipeline(
         video_model_path=args.video_model,
         action_model_path=args.action_model,
         stats_path=pathlib.Path(args.stats_path),
         experiment_name=args.experiment,
+        use_text_encoder=use_text_encoder,
     )
     model.eval()
     logger.info("Pipeline loaded and in eval mode.")
@@ -272,7 +310,8 @@ def serve(args: argparse.Namespace) -> None:
                 logger.info("Inference request received (seed=%s).", header.get("seed"))
                 try:
                     resp_header, actions_bytes = run_inference(
-                        model, header, parts[1], parts[2]
+                        model, header, parts[1], parts[2],
+                        prompt_embedding=task_embedding,
                     )
                     sock.send_multipart([json.dumps(resp_header).encode(), actions_bytes])
                     logger.info(
@@ -325,6 +364,24 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
                    help="Filesystem path for the ZMQ IPC socket (without ipc:// prefix).")
     p.add_argument("--ready_file", required=True,
                    help="Filesystem path written by the server once the model is ready.")
+    # ── Precomputed embeddings (avoids downloading T5 on deployment machine) ──
+    p.add_argument(
+        "--embeddings_path",
+        default=None,
+        help=(
+            "Path to the precomputed task-embeddings .pt file produced by "
+            "eval/so101/precompute_task_embeddings.py.  When supplied the T5 "
+            "text encoder is NOT loaded, saving ~22 GB of storage / VRAM."
+        ),
+    )
+    p.add_argument(
+        "--task",
+        default=None,
+        help=(
+            "Task ID to look up in --embeddings_path (e.g. '1', '13'). "
+            "Required when --embeddings_path is set."
+        ),
+    )
     p.add_argument("--log_level", default="INFO",
                    choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     # parse_known_args so eval.sh can forward all CLI args to both processes
@@ -341,6 +398,11 @@ def main() -> None:
     )
     if unknown:
         logger.debug("Ignoring unrecognised arguments (belong to robot_controller): %s", unknown)
+    if args.embeddings_path and not args.task:
+        raise SystemExit(
+            "ERROR: --task is required when --embeddings_path is set. "
+            "Example: --task 1  or  --task 13"
+        )
     serve(args)
 
 

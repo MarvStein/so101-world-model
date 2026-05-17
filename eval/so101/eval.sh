@@ -15,6 +15,10 @@
 #       --video_model  /path/to/video_backbone.pt \
 #       --action_model /path/to/action_decoder.pt \
 #       --stats_path   /path/to/dataset_statistics.json \
+#       [--task 1]                           # task ID shorthand (see description_task*.txt)
+#       [--embeddings_path eval/so101/task_embeddings.pt]  # precomputed T5 embeddings;
+#                                            # skips loading the T5 model (~22 GB saved).
+#                                            # Generate with: python eval/so101/precompute_task_embeddings.py
 #       [--robot_port /dev/ttyACM1] \
 #       [--task_description "Push ..."] \
 #       [see model_server.py --help and robot_controller.py --help for all options]

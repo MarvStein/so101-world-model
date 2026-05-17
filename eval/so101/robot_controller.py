@@ -500,8 +500,19 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
 
     # ── Task ─────────────────────────────────────────────────────────────────
     g = p.add_argument_group("Task")
+    g.add_argument(
+        "--task",
+        default=None,
+        metavar="ID",
+        help=(
+            "Task ID shorthand (e.g. '1', '13').  Reads the description from "
+            "description_task{ID}.txt in the repo root and uses it as the task "
+            "prompt.  Takes precedence over --task_description when both are given."
+        ),
+    )
     g.add_argument("--task_description", default=default_task,
-                   help="Natural-language task prompt fed to the video model.")
+                   help="Natural-language task prompt fed to the video model. "
+                        "Ignored when --task is set.")
 
     # ── Control ──────────────────────────────────────────────────────────────
     g = p.add_argument_group("Control")
@@ -550,6 +561,22 @@ def main() -> None:
         logger.debug(
             "Ignoring unrecognised arguments (belong to model_server): %s", unknown
         )
+
+    # ── Resolve task description ───────────────────────────────────────────────
+    if args.task is not None:
+        repo_root = pathlib.Path(__file__).parents[2]
+        task_file = repo_root / f"description_task{args.task}.txt"
+        if not task_file.exists():
+            raise SystemExit(
+                f"ERROR: task file not found: {task_file}\n"
+                f"Available tasks: " +
+                ", ".join(
+                    p.stem.replace("description_task", "")
+                    for p in sorted(repo_root.glob("description_task*.txt"))
+                )
+            )
+        args.task_description = task_file.read_text(encoding="utf-8").strip()
+        logger.info("Using task %s: %s", args.task, args.task_description)
 
     # ── ZMQ setup ─────────────────────────────────────────────────────────────
     ctx = zmq.Context()
