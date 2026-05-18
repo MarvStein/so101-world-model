@@ -22,7 +22,7 @@ data_components:
 dataset:
   _target_: cosmos_predict2.data.action.dataset_action.MimicDataset
   _convert_: partial
-  data_dir: /home/nvidia/projects/so101-world-model/data/action/lerobot # TODO adapt this path
+  data_dir: /home/ubuntu/projects/so101-world-model/data/action/lerobot # TODO adapt this path
   timestep_anchor: workspace_rgb
   data_components: ${..data_components}
   data_transforms: ${..data_transforms}
@@ -31,4 +31,4 @@ dataset:
   should_include_padded_tails: True
   seed: 42
   num_val_episodes: 10
-  tags: null  # list of dataset_tag strings to include (e.g. [task1, task12]); null = all episodes
+  tags: [task1, task12, task13]  # list of dataset_tag strings to include (e.g. [task1, task12]); null = all episodes

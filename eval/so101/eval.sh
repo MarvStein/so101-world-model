@@ -6,15 +6,17 @@
 #
 # Prerequisites — run these BEFORE this script:
 #
-#   1. On the brev instance, start the model server:
+#   1. On the local machine, open a port-forwarding tunnel:
+#        brev port-forward so101-h200 -p 5555:5555
+#
+#   2. On the brev instance, start the model server:
 #        bash eval/so101/start_server.sh \
-#            --video_model  /path/to/video_backbone.pt \
-#            --action_model /path/to/action_decoder.pt \
-#            --stats_path   /path/to/dataset_statistics.json \
+#            --video_model  /home/ubuntu/projects/so101-world-model/model/checkpoints/video_backbone/v2w_iter_000011000_fused.pt \
+#            --action_model /home/ubuntu/projects/so101-world-model/model/checkpoints/video_backbone/w2a_iter_000005750.pt \
+#            --stats_path   /home/ubuntu/projects/so101-world-model/data/action/lerobot/.statistics_cache/dataset-stats.json \
+#            --embeddings_path /home/ubuntu/projects/so101-world-model/eval/so101/task_embeddings.pt \
 #            [--port 5555]
 #
-#   2. On the local machine, open a port-forwarding tunnel:
-#        brev port-forward <instance-name> --port 5555:5555
 #
 # Usage:
 #   bash eval/so101/eval.sh \

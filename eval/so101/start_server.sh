@@ -10,12 +10,12 @@
 #     bash eval/so101/start_server.sh \
 #         --video_model     /path/to/video_backbone.pt \
 #         --action_model    /path/to/action_decoder.pt \
-#         --stats_path      /path/to/dataset_statistics.json \
-#         --embeddings_path eval/so101/task_embeddings.pt \
+#         --stats_path      /home/ubuntu/projects/so101-world-model/data/action/lerobot/.statistics_cache/dataset-stats.json \
+#         --embeddings_path /home/ubuntu/projects/so101-world-model/eval/so101/task_embeddings.pt \
 #         [--port 5555]
 #
 #   Terminal B — local machine:
-#     brev port-forward <instance-name> --port 5555:5555
+#     brev port-forward so101-h200 -p 5555:5555
 #
 #   Terminal C — local machine:
 #     bash eval/so101/eval.sh \
@@ -109,8 +109,6 @@ export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 echo "[start_server.sh] REPO_ROOT:            ${REPO_ROOT}"
 echo "[start_server.sh] MODEL_PYTHON:         ${MODEL_PYTHON}"
 echo "[start_server.sh] CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES}"
-echo "[start_server.sh] ldconfig shim:        ${_SHIM_DIR}/ldconfig"
-echo "[start_server.sh] NVRTC lib dir:        ${_NVRTC_LIB_DIR}"
 echo ""
 
 # ---------------------------------------------------------------------------

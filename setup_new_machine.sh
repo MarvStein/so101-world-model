@@ -44,7 +44,9 @@ cd "$REPO_ROOT"
 
 if ! command -v uv &>/dev/null; then
     echo "  uv not found. Installing via pip..."
-    pip install uv
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    source $HOME/.local/bin/env
+    source ~/.bashrc
 fi
 
 if [[ ! -d ".venv" ]]; then
@@ -66,6 +68,7 @@ if [[ ! -d ".venv" ]]; then
     uv venv --python 3.10
 fi
 uv sync --extra cu126
+uv pip install pyzmq
 
 echo "  Model venv ready: $REPO_ROOT/model/.venv"
 

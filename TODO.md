@@ -207,7 +207,7 @@ To run preprocessing for action decoder training:
 
 ```bash
 source .venv/bin/activate
-python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/process_lerobot.py --output-dir /home/ubuntu/workspace/so101-world-model/data/action/processed
+python /home/ubuntu/workspace/so101-world-model/data_preprocessing/action/process_lerobot.py --output-dir /home/ubuntu/workspace/so101-world-model/data/action
 # Language embedding computation
 deactivate
 cd ./model

@@ -85,7 +85,7 @@ from cosmos_predict2.pipelines.world2action import World2ActionPipeline
 from imaginaire.lazy_config import instantiate
 from imaginaire.utils.config_helper import override
 
-DEFAULT_EXPERIMENT = "w2a_lerobot_v2w_11k_lr1e-04_bs16"
+DEFAULT_EXPERIMENT = "w2a_lerobot_v2w_11k_lr1e-04_bs8_task1"
 
 logger = logging.getLogger(__name__)
 
@@ -372,6 +372,7 @@ def main() -> None:
         level=getattr(logging, args.log_level),
         format="%(asctime)s  %(levelname)-8s  [model-server]  %(message)s",
         datefmt="%H:%M:%S",
+        force=True,
     )
     if unknown:
         logger.debug("Ignoring unrecognised arguments: %s", unknown)
