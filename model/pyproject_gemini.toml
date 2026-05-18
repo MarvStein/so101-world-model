@@ -82,13 +82,14 @@ dependencies = [
 
 [project.optional-dependencies]
 blackwell = [
-  "apex",
   "flash-attn-4",
   "natten",
   "torch>=2.6.0",
   "torchvision",
   "transformer-engine",
-  # Explicit cu126 sub-dependencies have been removed so uv 
+  # apex is excluded — no pre-built Blackwell wheel exists on the cu128 index.
+  # Install from source after uv sync: pip install git+https://github.com/NVIDIA/apex.git --no-build-isolation
+  # Explicit cu126 sub-dependencies have been removed so uv
   # can natively resolve cu128 libraries required for Blackwell.
 ]
 
@@ -111,7 +112,6 @@ environments = [
   "python_version == '3.10' and sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 no-build-package = [
-  "apex",
   "flash-attn-4",
   "natten",
   "transformer-engine",
@@ -121,9 +121,6 @@ required-environments = [
 ]
 
 [tool.uv.sources]
-apex = [
-  { index = "cosmos-cu128", extra = "blackwell" },
-]
 flash-attn-4 = [
   { index = "cosmos-cu128", extra = "blackwell" },
 ]

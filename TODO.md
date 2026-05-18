@@ -44,6 +44,9 @@ uv venv --python 3.10
 uv sync --extra blackwell
 # Install pyzmq for ZeroMQ IPC with the robot controller
 uv pip install pyzmq
+# Install apex from source — no pre-built Blackwell wheel exists on the cu128 index
+uv pip install packaging ninja
+uv run pip install git+https://github.com/NVIDIA/apex.git --no-build-isolation
 ```
 
 **On any other GPU (H100, A100, …):** use the original `pyproject.toml`
