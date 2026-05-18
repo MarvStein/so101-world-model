@@ -1,26 +1,30 @@
 """Model inference server for SO101 closed-loop deployment.
 
 Loads the Video2World2Action pipeline once, then serves inference requests
-from the robot controller over a ZeroMQ IPC socket (REP side).
+from the robot controller over a ZeroMQ TCP socket (REP side).
 
-This process runs in the **model environment** (numpy == 1.26.4).
-The robot controller process (numpy >= 2.0) connects as the REQ side.
+This process runs on the **H100 brev instance** in the model environment
+(numpy == 1.26.4).  The robot controller (numpy >= 2.0) connects as the
+REQ side from the local machine via brev port-forwarding.
 
 Startup sequence
 ----------------
-1. Bind the IPC socket BEFORE loading the model — the OS queues any early
+1. Bind the TCP socket BEFORE loading the model — the OS queues any early
    connects from the controller so no messages are lost during model load.
 2. Load and warm up the pipeline (may take 30–120 s for large checkpoints).
-3. Write the --ready_file sentinel — eval.sh polls for this file before
-   starting the robot controller.
-4. Enter the REP receive loop.
+3. Log the bound address and enter the REP receive loop.
+4. On the local machine, run::
+
+     brev port-forward <instance-name> --port <local-port>:<remote-port>
+
+   then start robot_controller.py (which will prompt for manual confirmation
+   before connecting).
 
 Shutdown
 --------
 The server exits cleanly on SIGTERM or SIGINT.  The signal handler sets a
 flag; the main loop checks it after every 1-second poll so it can finish
-the current inference step before exiting.  eval.sh sends SIGTERM from its
-EXIT trap after the controller finishes.
+the current inference step before exiting.
 
 Protocol (ZeroMQ multipart, REP side)
 --------------------------------------
@@ -51,18 +55,15 @@ Usage
         --video_model  /path/to/video_backbone.pt \\
         --action_model /path/to/action_decoder.pt \\
         --stats_path   /path/to/dataset_statistics.json \\
-        --socket_path  /tmp/vam_12345 \\
-        --ready_file   /tmp/vam_12345.ready
+        [--host 0.0.0.0] [--port 5555]
 
-Normally started by eval.sh, which supplies --socket_path and --ready_file
-automatically and passes all other arguments through.
+Normally started via eval/so101/start_server.sh on the brev instance.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import logging
-import os
 import pathlib
 import signal
 import sys
@@ -241,13 +242,9 @@ def serve(args: argparse.Namespace) -> None:
     # LINGER=0: close immediately without waiting to flush outgoing messages.
     sock.setsockopt(zmq.LINGER, 0)
 
-    # Remove a stale socket file left by a previous crash so bind() succeeds.
-    if os.path.exists(args.socket_path):
-        logger.warning("Removing stale socket file: %s", args.socket_path)
-        os.unlink(args.socket_path)
-
-    sock.bind(f"ipc://{args.socket_path}")
-    logger.info("ZMQ REP socket bound at ipc://%s", args.socket_path)
+    bind_addr = f"tcp://{args.host}:{args.port}"
+    sock.bind(bind_addr)
+    logger.info("ZMQ REP socket bound at %s", bind_addr)
 
     # ---------------------------------------------------------------------------
     # Load precomputed task embedding (optional — skips T5 on deployment machine)
@@ -284,10 +281,6 @@ def serve(args: argparse.Namespace) -> None:
     )
     model.eval()
     logger.info("Pipeline loaded and in eval mode.")
-
-    # Signal readiness: eval.sh polls for this file before launching controller.
-    pathlib.Path(args.ready_file).write_text("ready\n", encoding="utf-8")
-    logger.info("Ready file written: %s", args.ready_file)
     logger.info("Waiting for inference requests ...")
 
     try:
@@ -334,12 +327,6 @@ def serve(args: argparse.Namespace) -> None:
         sock.close()
         ctx.term()
         logger.info("ZMQ context terminated.")
-        for path in (args.socket_path, args.ready_file):
-            try:
-                os.unlink(path)
-                logger.debug("Removed: %s", path)
-            except FileNotFoundError:
-                pass
         logger.info("Model server shut down cleanly.")
 
 
@@ -360,10 +347,10 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
                    help="Path to dataset_statistics.json for normaliser initialisation.")
     p.add_argument("--experiment", default=DEFAULT_EXPERIMENT,
                    help="Experiment config name.")
-    p.add_argument("--socket_path", required=True,
-                   help="Filesystem path for the ZMQ IPC socket (without ipc:// prefix).")
-    p.add_argument("--ready_file", required=True,
-                   help="Filesystem path written by the server once the model is ready.")
+    p.add_argument("--host", default="0.0.0.0",
+                   help="IP address for the ZMQ TCP socket to bind on.")
+    p.add_argument("--port", type=int, default=5555,
+                   help="TCP port for the ZMQ socket.")
     # ── Precomputed embeddings (avoids downloading T5 on deployment machine) ──
     p.add_argument(
         "--embeddings_path",
@@ -384,8 +371,6 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     )
     p.add_argument("--log_level", default="INFO",
                    choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    # parse_known_args so eval.sh can forward all CLI args to both processes
-    # without each process failing on arguments it doesn't own.
     return p.parse_known_args()
 
 

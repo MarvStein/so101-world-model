@@ -1,32 +1,36 @@
 """Robot controller for SO101 closed-loop deployment.
 
 Connects to the SO101 robot arm and runs the closed-loop control loop.
-Model inference is delegated to model_server.py via a ZeroMQ IPC socket.
+Model inference is delegated to model_server.py via a ZeroMQ TCP socket;
+the server runs on the H100 brev instance and is accessed via brev
+port-forwarding.
 
 This process runs in the **lerobot environment** (numpy >= 2.0).
-The model server process (numpy == 1.26.4) must be started first; eval.sh
-handles this automatically.
+The model server must be started on the brev instance first (see
+eval/so101/start_server.sh), and brev port-forwarding must be active
+before starting this script.
 
 Control loop
 ------------
 1. Capture a camera frame and joint positions from the SO101.
 2. Assemble rolling image history and current state into numpy arrays.
-3. Send them to the model server over ZMQ and wait for the action chunk.
-4. Execute the returned actions on the robot at --fps Hz.
-5. During execution, keep accumulating frames into the image history.
+3. Send them to the model server over ZMQ TCP and wait for the action chunk.
+4. Linearly upsample the returned actions from --fps to --target_hz.
+5. Execute the upsampled actions at --target_hz for smoother motion.
+   Camera observations are still captured at --fps Hz during execution.
 6. After the chunk, wait until the scene is still.
 7. Repeat from step 1 until --max_steps inference calls are reached.
 
 Usage
 -----
     python eval/so101/robot_controller.py \\
-        --socket_path /tmp/vam_12345 \\
+        --server_host localhost --server_port 5555 \\
+        [--target_hz 20] \\
         [--robot_port /dev/ttyACM1] \\
         [--task_description "Push ..."] \\
         [see --help for all options]
 
-Normally started by eval.sh, which supplies --socket_path automatically and
-passes all other arguments through.
+Normally started by eval/so101/eval.sh, which passes all arguments through.
 
 Notes
 -----
@@ -191,6 +195,38 @@ def _assemble_state_input(lowdim_deque: collections.deque) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Action upsampling
+# ---------------------------------------------------------------------------
+
+def upsample_actions(actions: np.ndarray, source_hz: int, target_hz: int) -> np.ndarray:
+    """Linearly upsample an action sequence from source_hz to target_hz.
+
+    Uses per-DOF linear interpolation (numpy.interp) to create intermediate
+    waypoints, making robot motion smoother without changing the total
+    real-time duration of the chunk.
+
+    Args:
+        actions:    float32 array of shape (N, DOF).
+        source_hz:  Native action frequency of the model output (Hz).
+        target_hz:  Desired robot execution frequency (Hz).
+
+    Returns:
+        float32 array of shape (round(N * target_hz / source_hz), DOF).
+        Returns *actions* unchanged when target_hz == source_hz.
+    """
+    if target_hz == source_hz:
+        return actions
+    n, dof = actions.shape
+    n_up = round(n * target_hz / source_hz)
+    t_src = np.linspace(0.0, 1.0, n)
+    t_dst = np.linspace(0.0, 1.0, n_up)
+    upsampled = np.stack(
+        [np.interp(t_dst, t_src, actions[:, d]) for d in range(dof)], axis=1
+    )
+    return upsampled.astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
 # ZMQ inference call
 # ---------------------------------------------------------------------------
 
@@ -313,6 +349,7 @@ def run_episode(
     task_description: str,
     camera_key: str,
     fps: int,
+    target_hz: int,
     num_execute_actions: int,
     stop_denoising_step: int | None,
     still_threshold: float,
@@ -321,24 +358,32 @@ def run_episode(
 ) -> None:
     """Run one closed-loop episode.
 
-    On each inference step the model predicts ACTION_HORIZON actions;
-    `num_execute_actions` of them are executed before re-planning.
-    The image history accumulates during execution so the model always
-    receives the most recent visual context.
+    On each inference step the model predicts ACTION_HORIZON actions at fps;
+    they are linearly upsampled to target_hz before execution.  Only
+    `num_execute_actions` original-rate steps worth of upsampled actions are
+    executed before re-planning.  Camera observations are captured at fps Hz
+    regardless of target_hz to avoid duplicating frames in the history.
 
     Args:
         robot:               Connected SO101Follower.
         zmq_socket:          ZMQ REQ socket connected to model_server.py.
         task_description:    Natural-language task prompt.
         camera_key:          Observation dict key for the front camera.
-        fps:                 Robot control frequency (Hz).
-        num_execute_actions: Actions from the chunk to execute before re-planning.
+        fps:                 Model input / camera frequency (Hz).
+        target_hz:           Robot execution frequency (Hz); actions are
+                             linearly upsampled from fps to this rate.
+        num_execute_actions: Actions (at fps) from the chunk to execute
+                             before re-planning.
         stop_denoising_step: Early-exit step for video denoising (None = full).
         still_threshold:     Per-pixel grayscale diff for motion detection.
         max_wait_s:          Max seconds to wait for scene to settle per chunk.
         max_steps:           Maximum number of model inference calls.
     """
-    step_period = 1.0 / fps
+    target_step_period = 1.0 / target_hz
+    # How many upsampled steps correspond to one original fps step.
+    # _observe_and_enqueue() is called every this many upsampled steps so the
+    # camera (running at fps Hz) is never polled faster than it captures.
+    observe_every = max(1, round(target_hz / fps))
 
     # Rolling histories.
     # maxlen: (IMG_HORIZON - 1) * IMG_SUBSAMPLE + 1 frames at CAMERA_FPS yield
@@ -387,21 +432,26 @@ def run_episode(
             seed=inference_step,
             stop_denoising_step=stop_denoising_step,
         )
-        # actions_rad: (ACTION_HORIZON, 5) in radians
+        # actions_rad: (ACTION_HORIZON, 5) in radians at fps Hz
         logger.info("Received %d actions from model server.", len(actions_rad))
 
-        # ── Execute action chunk ────────────────────────────────────────────
-        n_exec = min(num_execute_actions, len(actions_rad))
-        logger.info("Executing %d / %d actions at %d Hz ...", n_exec, len(actions_rad), fps)
+        # ── Upsample and execute action chunk ──────────────────────────────
+        actions_up = upsample_actions(actions_rad, fps, target_hz)
+        n_exec_up = min(round(num_execute_actions * target_hz / fps), len(actions_up))
+        logger.info(
+            "Executing %d upsampled actions at %d Hz (from %d @ %d Hz) ...",
+            n_exec_up, target_hz, num_execute_actions, fps,
+        )
 
-        for i in range(n_exec):
+        for i in range(n_exec_up):
             t_start = time.monotonic()
 
-            # Observe before sending — accumulates visual context during execution.
-            _observe_and_enqueue()
+            # Observe at the original fps rate only to avoid duplicating frames.
+            if i % observe_every == 0:
+                _observe_and_enqueue()
 
             # Convert radians → degrees and send to robot.
-            action_deg = np.rad2deg(actions_rad[i])
+            action_deg = np.rad2deg(actions_up[i])
             robot_action = {
                 f"{joint}.pos": float(action_deg[j])
                 for j, joint in enumerate(JOINT_NAMES)
@@ -409,7 +459,7 @@ def run_episode(
             robot.send_action(robot_action)
 
             elapsed = time.monotonic() - t_start
-            sleep_remaining = step_period - elapsed
+            sleep_remaining = target_step_period - elapsed
             if sleep_remaining > 0:
                 time.sleep(sleep_remaining)
 
@@ -475,11 +525,19 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # ── IPC ──────────────────────────────────────────────────────────────────
-    g = p.add_argument_group("IPC")
+    # ── Network ─────────────────────────────────────────────────────────────────────
+    g = p.add_argument_group("Network")
     g.add_argument(
-        "--socket_path", required=True,
-        help="ZMQ IPC socket path (must match --socket_path of model_server.py).",
+        "--server_host", default="localhost",
+        help=(
+            "Hostname or IP of the model server. "
+            "Use 'localhost' when brev port-forwarding is active "
+            "(brev port-forward <instance> --port <local>:<remote>)."
+        ),
+    )
+    g.add_argument(
+        "--server_port", type=int, default=5555,
+        help="TCP port of the model server (must match --port on the brev instance).",
     )
     g.add_argument(
         "--recv_timeout_ms", type=int, default=300_000,
@@ -517,7 +575,14 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     # ── Control ──────────────────────────────────────────────────────────────
     g = p.add_argument_group("Control")
     g.add_argument("--fps", type=int, default=10,
-                   help="Robot control frequency (Hz); also sets camera capture rate.")
+                   help="Model input / camera capture frequency (Hz).")
+    g.add_argument(
+        "--target_hz", type=int, default=None,
+        help=(
+            "Robot execution frequency in Hz. Actions are linearly upsampled from "
+            "--fps to this rate for smoother motion. Defaults to --fps (no upsampling)."
+        ),
+    )
     g.add_argument("--num_execute_actions", type=int, default=8,
                    help="Number of actions from the 15-step chunk to execute before re-planning.")
     g.add_argument("--max_steps", type=int, default=20,
@@ -578,7 +643,25 @@ def main() -> None:
         args.task_description = task_file.read_text(encoding="utf-8").strip()
         logger.info("Using task %s: %s", args.task, args.task_description)
 
-    # ── ZMQ setup ─────────────────────────────────────────────────────────────
+    # ── Resolve target_hz ─────────────────────────────────────────────────────────────
+    target_hz = args.target_hz if args.target_hz is not None else args.fps
+    logger.info(
+        "Action upsampling: %d Hz (model) → %d Hz (robot)",
+        args.fps, target_hz,
+    )
+
+    # ── User confirmation ──────────────────────────────────────────────────────────
+    print(
+        f"\n[controller]  Model server : tcp://{args.server_host}:{args.server_port}"
+        f"\n[controller]  Ensure the model server is running on the brev instance"
+        f"\n[controller]  and brev port-forwarding is active, e.g.:"
+        f"\n[controller]    brev port-forward <instance> --port {args.server_port}:{args.server_port}"
+        f"\n[controller]  Press Enter when ready ...",
+        flush=True,
+    )
+    input()
+
+    # ── ZMQ setup ───────────────────────────────────────────────────────────────────────
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REQ)
     # LINGER=0: discard unsent messages immediately on close.
@@ -587,8 +670,9 @@ def main() -> None:
     # After a timeout the REQ socket is in an error state and must not be reused;
     # the finally block below closes it.
     sock.setsockopt(zmq.RCVTIMEO, args.recv_timeout_ms)
-    sock.connect(f"ipc://{args.socket_path}")
-    logger.info("Connected to model server at ipc://%s", args.socket_path)
+    server_addr = f"tcp://{args.server_host}:{args.server_port}"
+    sock.connect(server_addr)
+    logger.info("Connected to model server at %s", server_addr)
 
     # ── Robot setup ───────────────────────────────────────────────────────────
     robot = make_robot(
@@ -624,6 +708,7 @@ def main() -> None:
             task_description=args.task_description,
             camera_key=args.camera_key,
             fps=args.fps,
+            target_hz=target_hz,
             num_execute_actions=args.num_execute_actions,
             stop_denoising_step=args.stop_denoising_step,
             still_threshold=args.still_threshold,
