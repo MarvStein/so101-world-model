@@ -8,9 +8,10 @@
 #
 #   Terminal A — brev instance:
 #     bash eval/so101/start_server.sh \
-#         --video_model  /path/to/video_backbone.pt \
-#         --action_model /path/to/action_decoder.pt \
-#         --stats_path   /path/to/dataset_statistics.json \
+#         --video_model     /path/to/video_backbone.pt \
+#         --action_model    /path/to/action_decoder.pt \
+#         --stats_path      /path/to/dataset_statistics.json \
+#         --embeddings_path eval/so101/task_embeddings.pt \
 #         [--port 5555]
 #
 #   Terminal B — local machine:
@@ -59,45 +60,45 @@ if [[ -z "${MODEL_PYTHON:-}" ]]; then
         "${HOME}/.venvs/cosmos/bin/python")"
 fi
 
-# ---------------------------------------------------------------------------
-# ldconfig shim — no-sudo workaround for transformer_engine libnvrtc discovery
-#
-# transformer_engine runs  `ldconfig -p | grep 'libnvrtc'`  to locate the
-# CUDA NVRTC library.  The library lives inside the model venv's nvidia
-# packages but is not registered in the system ldconfig cache (registering
-# requires root).  We create a temporary shim script named `ldconfig` that
-# calls the real one and then appends the venv library entries in the
-# expected format.  The shim directory is prepended to PATH only for the
-# model server process.
-# ---------------------------------------------------------------------------
-_MODEL_SITE_PKG="$("${MODEL_PYTHON}" -c \
-    "import sysconfig; print(sysconfig.get_paths()['purelib'])")"
-_NVRTC_LIB_DIR="${_MODEL_SITE_PKG}/nvidia/cuda_nvrtc/lib"
-_CUDART_LIB_DIR="${_MODEL_SITE_PKG}/nvidia/cuda_runtime/lib"
-_CUBLAS_LIB_DIR="${_MODEL_SITE_PKG}/nvidia/cublas/lib"
+# # ---------------------------------------------------------------------------
+# # ldconfig shim — no-sudo workaround for transformer_engine libnvrtc discovery
+# #
+# # transformer_engine runs  `ldconfig -p | grep 'libnvrtc'`  to locate the
+# # CUDA NVRTC library.  The library lives inside the model venv's nvidia
+# # packages but is not registered in the system ldconfig cache (registering
+# # requires root).  We create a temporary shim script named `ldconfig` that
+# # calls the real one and then appends the venv library entries in the
+# # expected format.  The shim directory is prepended to PATH only for the
+# # model server process.
+# # ---------------------------------------------------------------------------
+# _MODEL_SITE_PKG="$("${MODEL_PYTHON}" -c \
+#     "import sysconfig; print(sysconfig.get_paths()['purelib'])")"
+# _NVRTC_LIB_DIR="${_MODEL_SITE_PKG}/nvidia/cuda_nvrtc/lib"
+# _CUDART_LIB_DIR="${_MODEL_SITE_PKG}/nvidia/cuda_runtime/lib"
+# _CUBLAS_LIB_DIR="${_MODEL_SITE_PKG}/nvidia/cublas/lib"
 
-_REAL_LDCONFIG="$(command -v ldconfig 2>/dev/null || echo /sbin/ldconfig)"
+# _REAL_LDCONFIG="$(command -v ldconfig 2>/dev/null || echo /sbin/ldconfig)"
 
-_SHIM_DIR="$(mktemp -d)"
-cat > "${_SHIM_DIR}/ldconfig" << SHIM_SCRIPT
-#!/bin/bash
-"${_REAL_LDCONFIG}" "\$@" 2>/dev/null || true
-for _f in "${_NVRTC_LIB_DIR}"/libnvrtc*.so*; do
-    [[ -f "\$_f" ]] || continue
-    printf "\\t%s (libc6,x86-64) => %s\\n" "\$(basename "\$_f")" "\$_f"
-done
-SHIM_SCRIPT
-chmod +x "${_SHIM_DIR}/ldconfig"
+# _SHIM_DIR="$(mktemp -d)"
+# cat > "${_SHIM_DIR}/ldconfig" << SHIM_SCRIPT
+# #!/bin/bash
+# "${_REAL_LDCONFIG}" "\$@" 2>/dev/null || true
+# for _f in "${_NVRTC_LIB_DIR}"/libnvrtc*.so*; do
+#     [[ -f "\$_f" ]] || continue
+#     printf "\\t%s (libc6,x86-64) => %s\\n" "\$(basename "\$_f")" "\$_f"
+# done
+# SHIM_SCRIPT
+# chmod +x "${_SHIM_DIR}/ldconfig"
 
-_MODEL_LD_LIBRARY_PATH="${_NVRTC_LIB_DIR}:${_CUDART_LIB_DIR}:${_CUBLAS_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+# _MODEL_LD_LIBRARY_PATH="${_NVRTC_LIB_DIR}:${_CUDART_LIB_DIR}:${_CUBLAS_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
-# ---------------------------------------------------------------------------
-# Cleanup shim dir on exit
-# ---------------------------------------------------------------------------
-cleanup() {
-    rm -rf "${_SHIM_DIR}"
-}
-trap cleanup EXIT INT TERM
+# # ---------------------------------------------------------------------------
+# # Cleanup shim dir on exit
+# # ---------------------------------------------------------------------------
+# cleanup() {
+#     rm -rf "${_SHIM_DIR}"
+# }
+# trap cleanup EXIT INT TERM
 
 # ---------------------------------------------------------------------------
 # Environment
@@ -116,8 +117,8 @@ echo ""
 # Start model server (foreground — Ctrl-C or SIGTERM to stop)
 # ---------------------------------------------------------------------------
 echo "[start_server.sh] Starting model server ..."
-PATH="${_SHIM_DIR}:${PATH}" \
-LD_LIBRARY_PATH="${_MODEL_LD_LIBRARY_PATH}" \
+# PATH="${_SHIM_DIR}:${PATH}" \
+# LD_LIBRARY_PATH="${_MODEL_LD_LIBRARY_PATH}" \
 PYTHONPATH="${REPO_ROOT}/model:${REPO_ROOT}/data_preprocessing${PYTHONPATH:+:${PYTHONPATH}}" \
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES}" \
 TOKENIZERS_PARALLELISM=false \

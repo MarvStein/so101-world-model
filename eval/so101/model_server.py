@@ -33,7 +33,7 @@ Controller → Server  (3-part)
             {"type": "infer",
              "img_shape": [3, 5, 480, 640], "img_dtype": "float32",
              "state_shape": [1, 5],         "state_dtype": "float32",
-             "task": "<prompt>",
+             "task_id": "1",
              "num_sampling_step": 35,
              "stop_denoising_step": 20,
              "seed": 0}
@@ -52,9 +52,10 @@ Server → Controller  (1-part, error)
 Usage
 -----
     python eval/so101/model_server.py \\
-        --video_model  /path/to/video_backbone.pt \\
-        --action_model /path/to/action_decoder.pt \\
-        --stats_path   /path/to/dataset_statistics.json \\
+        --video_model     /path/to/video_backbone.pt \\
+        --action_model    /path/to/action_decoder.pt \\
+        --stats_path      /path/to/dataset_statistics.json \\
+        --embeddings_path eval/so101/task_embeddings.pt \\
         [--host 0.0.0.0] [--port 5555]
 
 Normally started via eval/so101/start_server.sh on the brev instance.
@@ -167,18 +168,17 @@ def run_inference(
     header: dict,
     img_bytes: bytes,
     state_bytes: bytes,
-    prompt_embedding: torch.Tensor | None = None,
+    embeddings: dict[str, torch.Tensor],
 ) -> tuple[dict, bytes]:
     """Deserialise the request, run the model, return (response_header, actions_bytes).
 
     Args:
-        model:            Loaded pipeline in eval mode on CUDA.
-        header:           Decoded JSON header from the client request.
-        img_bytes:        Raw bytes of the float32 image array (C-contiguous).
-        state_bytes:      Raw bytes of the float32 state array (C-contiguous).
-        prompt_embedding: Optional precomputed T5 embedding of shape
-                          (1, 512, 1024) on CUDA as bfloat16.  When provided
-                          the pipeline skips the text-encoder call entirely.
+        model:      Loaded pipeline in eval mode on CUDA.
+        header:     Decoded JSON header from the client request.
+        img_bytes:  Raw bytes of the float32 image array (C-contiguous).
+        state_bytes: Raw bytes of the float32 state array (C-contiguous).
+        embeddings: Dict mapping task ID strings to precomputed T5 embeddings
+                    of shape (1, 512, 1024) on CUDA as bfloat16.
 
     Returns:
         Tuple of the JSON-serialisable response header dict and the raw
@@ -200,14 +200,24 @@ def run_inference(
         torch.from_numpy(state_np).unsqueeze(0).to(device="cuda", dtype=torch.bfloat16)
     )
 
+    task_id = header["task_id"]
+    if task_id not in embeddings:
+        available = sorted(embeddings.keys())
+        raise KeyError(
+            f"Task ID {task_id!r} not found in loaded embeddings. "
+            f"Available: {available}"
+        )
+    prompt_embedding = embeddings[task_id]
+
     logger.debug(
-        "input_vid: %s  |  state: %s", tuple(input_vid.shape), tuple(state_tensor.shape)
+        "input_vid: %s  |  state: %s  |  task_id: %s",
+        tuple(input_vid.shape), tuple(state_tensor.shape), task_id,
     )
 
     pred_actions = model(
         input_vid=input_vid,
         state_B_HO_O=state_tensor,
-        prompt=header["task"],
+        prompt="",
         prompt_embedding=prompt_embedding,
         num_sampling_step=header["num_sampling_step"],
         stop_after_step=header.get("stop_denoising_step"),  # None → full denoising
@@ -247,37 +257,28 @@ def serve(args: argparse.Namespace) -> None:
     logger.info("ZMQ REP socket bound at %s", bind_addr)
 
     # ---------------------------------------------------------------------------
-    # Load precomputed task embedding (optional — skips T5 on deployment machine)
+    # Load all precomputed task embeddings
     # ---------------------------------------------------------------------------
-    task_embedding: torch.Tensor | None = None
-    use_text_encoder = True
-    if args.embeddings_path:
-        embeddings_path = pathlib.Path(args.embeddings_path)
-        logger.info("Loading precomputed embeddings from %s ...", embeddings_path)
-        embeddings: dict[str, torch.Tensor] = torch.load(
-            embeddings_path, map_location="cpu", weights_only=True
-        )
-        if args.task not in embeddings:
-            available = sorted(embeddings.keys())
-            raise KeyError(
-                f"Task {args.task!r} not found in {embeddings_path}. "
-                f"Available task IDs: {available}"
-            )
-        task_embedding = embeddings[args.task].to(device="cuda", dtype=torch.bfloat16)
-        logger.info(
-            "Loaded embedding for task %r — shape %s, dtype %s",
-            args.task, tuple(task_embedding.shape), task_embedding.dtype,
-        )
-        use_text_encoder = False
+    embeddings_path = pathlib.Path(args.embeddings_path)
+    logger.info("Loading precomputed embeddings from %s ...", embeddings_path)
+    embeddings: dict[str, torch.Tensor] = {
+        k: v.to(device="cuda", dtype=torch.bfloat16)
+        for k, v in torch.load(embeddings_path, map_location="cpu", weights_only=True).items()
+    }
+    logger.info(
+        "Loaded %d task embedding(s): %s",
+        len(embeddings), sorted(embeddings.keys()),
+    )
 
     # Load the model AFTER binding so the OS can queue early client messages.
-    logger.info("Loading Video2World2Action pipeline (use_text_encoder=%s) ...", use_text_encoder)
+    # T5 text encoder is never loaded — embeddings are always precomputed.
+    logger.info("Loading Video2World2Action pipeline (use_text_encoder=False) ...")
     model = load_pipeline(
         video_model_path=args.video_model,
         action_model_path=args.action_model,
         stats_path=pathlib.Path(args.stats_path),
         experiment_name=args.experiment,
-        use_text_encoder=use_text_encoder,
+        use_text_encoder=False,
     )
     model.eval()
     logger.info("Pipeline loaded and in eval mode.")
@@ -304,7 +305,7 @@ def serve(args: argparse.Namespace) -> None:
                 try:
                     resp_header, actions_bytes = run_inference(
                         model, header, parts[1], parts[2],
-                        prompt_embedding=task_embedding,
+                        embeddings=embeddings,
                     )
                     sock.send_multipart([json.dumps(resp_header).encode(), actions_bytes])
                     logger.info(
@@ -351,22 +352,13 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
                    help="IP address for the ZMQ TCP socket to bind on.")
     p.add_argument("--port", type=int, default=5555,
                    help="TCP port for the ZMQ socket.")
-    # ── Precomputed embeddings (avoids downloading T5 on deployment machine) ──
     p.add_argument(
         "--embeddings_path",
-        default=None,
+        required=True,
         help=(
             "Path to the precomputed task-embeddings .pt file produced by "
-            "eval/so101/precompute_task_embeddings.py.  When supplied the T5 "
-            "text encoder is NOT loaded, saving ~22 GB of storage / VRAM."
-        ),
-    )
-    p.add_argument(
-        "--task",
-        default=None,
-        help=(
-            "Task ID to look up in --embeddings_path (e.g. '1', '13'). "
-            "Required when --embeddings_path is set."
+            "eval/so101/precompute_task_embeddings.py.  The T5 text encoder "
+            "is never loaded; all task embeddings are read from this file."
         ),
     )
     p.add_argument("--log_level", default="INFO",
@@ -382,12 +374,7 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
     if unknown:
-        logger.debug("Ignoring unrecognised arguments (belong to robot_controller): %s", unknown)
-    if args.embeddings_path and not args.task:
-        raise SystemExit(
-            "ERROR: --task is required when --embeddings_path is set. "
-            "Example: --task 1  or  --task 13"
-        )
+        logger.debug("Ignoring unrecognised arguments: %s", unknown)
     serve(args)
 
 

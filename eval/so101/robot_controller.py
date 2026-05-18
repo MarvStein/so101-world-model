@@ -27,7 +27,7 @@ Usage
         --server_host localhost --server_port 5555 \\
         [--target_hz 20] \\
         [--robot_port /dev/ttyACM1] \\
-        [--task_description "Push ..."] \\
+        [--target_hz 20] \\
         [see --help for all options]
 
 Normally started by eval/so101/eval.sh, which passes all arguments through.
@@ -234,7 +234,7 @@ def call_model_server(
     sock: zmq.Socket,
     img_np: np.ndarray,
     state_np: np.ndarray,
-    task: str,
+    task_id: str,
     seed: int,
     stop_denoising_step: int | None,
 ) -> np.ndarray:
@@ -246,7 +246,8 @@ def call_model_server(
                             C-contiguous (guaranteed by _assemble_image_input).
         state_np:           float32 array (LOWDIM_HORIZON, 5),
                             C-contiguous (guaranteed by _assemble_state_input).
-        task:               Natural-language task description.
+        task_id:            Task ID string matching a key in the server's
+                            precomputed embeddings (e.g. '1', '13').
         seed:               Inference-step index used as the RNG seed.
         stop_denoising_step: Early-exit denoising step, or None for full denoising.
 
@@ -266,7 +267,7 @@ def call_model_server(
         "img_dtype": str(img_np.dtype),
         "state_shape": list(state_np.shape),
         "state_dtype": str(state_np.dtype),
-        "task": task,
+        "task_id": task_id,
         "num_sampling_step": _NUM_SAMPLING_STEP,
         "stop_denoising_step": stop_denoising_step,
         "seed": seed,
@@ -346,7 +347,7 @@ def wait_until_still(
 def run_episode(
     robot: SO101Follower,
     zmq_socket: zmq.Socket,
-    task_description: str,
+    task_id: str,
     camera_key: str,
     fps: int,
     target_hz: int,
@@ -367,7 +368,8 @@ def run_episode(
     Args:
         robot:               Connected SO101Follower.
         zmq_socket:          ZMQ REQ socket connected to model_server.py.
-        task_description:    Natural-language task prompt.
+        task_id:             Task ID string matching a key in the server's
+                             precomputed embeddings (e.g. '1', '13').
         camera_key:          Observation dict key for the front camera.
         fps:                 Model input / camera frequency (Hz).
         target_hz:           Robot execution frequency (Hz); actions are
@@ -428,7 +430,7 @@ def run_episode(
             sock=zmq_socket,
             img_np=img_np,
             state_np=state_np,
-            task=task_description,
+            task_id=task_id,
             seed=inference_step,
             stop_denoising_step=stop_denoising_step,
         )
@@ -512,14 +514,6 @@ def make_robot(
 # ---------------------------------------------------------------------------
 
 def parse_args() -> tuple[argparse.Namespace, list[str]]:
-    repo_root = pathlib.Path(__file__).parents[2]
-    default_task_path = repo_root / "description_task1.txt"
-    default_task = (
-        default_task_path.read_text(encoding="utf-8").strip()
-        if default_task_path.exists()
-        else "Push the white polyhedron to the goal position."
-    )
-
     p = argparse.ArgumentParser(
         description="Robot controller for the SO101 Video-World-Action pipeline.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -560,17 +554,14 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     g = p.add_argument_group("Task")
     g.add_argument(
         "--task",
-        default=None,
+        required=True,
         metavar="ID",
         help=(
-            "Task ID shorthand (e.g. '1', '13').  Reads the description from "
-            "description_task{ID}.txt in the repo root and uses it as the task "
-            "prompt.  Takes precedence over --task_description when both are given."
+            "Task ID (e.g. '1', '13').  Must match a key in the server's "
+            "precomputed embeddings file.  The corresponding "
+            "description_task{ID}.txt is read locally for confirmation logging."
         ),
     )
-    g.add_argument("--task_description", default=default_task,
-                   help="Natural-language task prompt fed to the video model. "
-                        "Ignored when --task is set.")
 
     # ── Control ──────────────────────────────────────────────────────────────
     g = p.add_argument_group("Control")
@@ -627,21 +618,15 @@ def main() -> None:
             "Ignoring unrecognised arguments (belong to model_server): %s", unknown
         )
 
-    # ── Resolve task description ───────────────────────────────────────────────
-    if args.task is not None:
-        repo_root = pathlib.Path(__file__).parents[2]
-        task_file = repo_root / f"description_task{args.task}.txt"
-        if not task_file.exists():
-            raise SystemExit(
-                f"ERROR: task file not found: {task_file}\n"
-                f"Available tasks: " +
-                ", ".join(
-                    p.stem.replace("description_task", "")
-                    for p in sorted(repo_root.glob("description_task*.txt"))
-                )
-            )
-        args.task_description = task_file.read_text(encoding="utf-8").strip()
-        logger.info("Using task %s: %s", args.task, args.task_description)
+    # ── Resolve task label for logging ─────────────────────────────────────────────────
+    repo_root = pathlib.Path(__file__).parents[2]
+    task_file = repo_root / f"description_task{args.task}.txt"
+    task_label = (
+        task_file.read_text(encoding="utf-8").strip()
+        if task_file.exists()
+        else f"(no description_task{args.task}.txt found)"
+    )
+    logger.info("Task %s: %s", args.task, task_label)
 
     # ── Resolve target_hz ─────────────────────────────────────────────────────────────
     target_hz = args.target_hz if args.target_hz is not None else args.fps
@@ -652,7 +637,8 @@ def main() -> None:
 
     # ── User confirmation ──────────────────────────────────────────────────────────
     print(
-        f"\n[controller]  Model server : tcp://{args.server_host}:{args.server_port}"
+        f"\n[controller]  Task          : {args.task} — {task_label}"
+        f"\n[controller]  Model server  : tcp://{args.server_host}:{args.server_port}"
         f"\n[controller]  Ensure the model server is running on the brev instance"
         f"\n[controller]  and brev port-forwarding is active, e.g.:"
         f"\n[controller]    brev port-forward <instance> --port {args.server_port}:{args.server_port}"
@@ -699,13 +685,12 @@ def main() -> None:
             robot.get_observation()
             time.sleep(1.0 / args.fps)
 
-        logger.info("Task: %s", args.task_description)
-        logger.info("Starting closed-loop episode (max_steps=%d) ...", args.max_steps)
+        logger.info("Task %s: starting closed-loop episode (max_steps=%d) ...", args.task, args.max_steps)
 
         run_episode(
             robot=robot,
             zmq_socket=sock,
-            task_description=args.task_description,
+            task_id=args.task,
             camera_key=args.camera_key,
             fps=args.fps,
             target_hz=target_hz,
