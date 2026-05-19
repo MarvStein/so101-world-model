@@ -120,15 +120,15 @@ lerobot_cfg["defaults"][2]["override /data_config"] = "lerobot"
 lerobot_cfg["model"]["config"]["pipe_config"]["xattn_layer_idx"] = 20
 lerobot_cfg["optimizer"]["lr"] = 1e-4
 lerobot_cfg["job"]["group"] = "lerobot"
-lerobot_cfg["job"]["name"] = "w2a_lerobot_v2w_11k_lr1e-04_bs8_task1"
-lerobot_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=8)}
+lerobot_cfg["job"]["name"] = "w2a_lerobot_v2w_11k_lr1e-04_bs4_task1"
+lerobot_cfg["dataloader_train"] = {"batch_size": L(get_local_batch_size)(global_bsz=4)}
 lerobot_cfg["trainer"]["run_validation"] = False
 
 
 cs.store(
     group="experiment",
     package="_global_",
-    name="w2a_lerobot_v2w_11k_lr1e-04_bs8_task1",
+    name="w2a_lerobot_v2w_11k_lr1e-04_bs4_task1",
     node=lerobot_cfg,
 )
 
