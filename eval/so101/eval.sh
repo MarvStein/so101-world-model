@@ -27,6 +27,8 @@
 #       [--task_description "Push ..."] \
 #       [see robot_controller.py --help for all options]
 #
+# bash eval/so101/eval.sh --server_port 6555 --task 1 --robot_port /dev/ttyACM0 --num_execute_actions 8 --target_hz 10 --stop_denoising_step 20
+
 # Environment variables (optional):
 #   LEROBOT_PYTHON  Explicit path to the lerobot-env Python interpreter.
 
@@ -53,12 +55,12 @@ _find_python() {
     exit 1
 }
 
-if [[ -z "${LEROBOT_PYTHON:-}" ]]; then
-    LEROBOT_PYTHON="$(_find_python LEROBOT_PYTHON \
-        "${REPO_ROOT}/.venv-lerobot/bin/python" \
-        "${REPO_ROOT}/.venv/bin/python" \
-        "${HOME}/.venvs/lerobot/bin/python")"
-fi
+# if [[ -z "${LEROBOT_PYTHON:-}" ]]; then
+#     LEROBOT_PYTHON="$(_find_python LEROBOT_PYTHON \
+#         "${REPO_ROOT}/.venv-lerobot/bin/python" \
+#         "${REPO_ROOT}/.venv/bin/python" \
+#         "${HOME}/.venvs/lerobot/bin/python")"
+# fi
 
 # ---------------------------------------------------------------------------
 # Misc environment
@@ -66,7 +68,7 @@ fi
 export TOKENIZERS_PARALLELISM=false
 
 echo "[eval.sh] REPO_ROOT:      ${REPO_ROOT}"
-echo "[eval.sh] LEROBOT_PYTHON: ${LEROBOT_PYTHON}"
+# echo "[eval.sh] LEROBOT_PYTHON: ${LEROBOT_PYTHON}"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -75,7 +77,7 @@ echo ""
 echo "[eval.sh] Starting robot controller ..."
 PYTHONPATH="${REPO_ROOT}/lerobot/src:${REPO_ROOT}/data_preprocessing${PYTHONPATH:+:${PYTHONPATH}}" \
 TOKENIZERS_PARALLELISM=false \
-    "${LEROBOT_PYTHON}" "${SCRIPT_DIR}/robot_controller.py" \
+    python "${SCRIPT_DIR}/robot_controller.py" \
         "$@"
 
 echo "[eval.sh] Robot controller exited."

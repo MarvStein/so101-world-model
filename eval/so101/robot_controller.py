@@ -270,7 +270,7 @@ def call_model_server(
         "task_id": task_id,
         "num_sampling_step": _NUM_SAMPLING_STEP,
         "stop_denoising_step": stop_denoising_step,
-        "seed": seed,
+        "seed": 0,
     }
     sock.send_multipart([json.dumps(header).encode(), img_np.tobytes(), state_np.tobytes()])
 
@@ -489,6 +489,7 @@ def make_robot(
     camera_index: int,
     camera_key: str,
     fps: int,
+    robot_id: str = "follower",
 ) -> SO101Follower:
     """Construct an SO101Follower with a single front camera."""
     cam_cfg = OpenCVCameraConfig(
@@ -496,9 +497,11 @@ def make_robot(
         fps=fps,
         width=1920,
         height=1080,
+        fourcc="MJPG",
         warmup_s=5,
     )
     robot_cfg = SOFollowerRobotConfig(
+        id=robot_id,
         port=robot_port,
         cameras={camera_key: cam_cfg},
         disable_torque_on_disconnect=True,
@@ -543,8 +546,10 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
 
     # ── Robot ────────────────────────────────────────────────────────────────
     g = p.add_argument_group("Robot")
-    g.add_argument("--robot_port", default="/dev/ttyACM1",
+    g.add_argument("--robot_port", default="/dev/ttyACM0",
                    help="Serial port for the SO101 motor bus (find with: lerobot-find-port).")
+    g.add_argument("--robot_id", default="follower",
+                   help="Robot ID used to locate the calibration file (<calibration_dir>/<id>.json).")
     g.add_argument("--camera_index", type=int, default=0,
                    help="OpenCV camera device index.")
     g.add_argument("--camera_key", default="front",
@@ -568,7 +573,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     g.add_argument("--fps", type=int, default=10,
                    help="Model input / camera capture frequency (Hz).")
     g.add_argument(
-        "--target_hz", type=int, default=None,
+        "--target_hz", type=int, default=30,
         help=(
             "Robot execution frequency in Hz. Actions are linearly upsampled from "
             "--fps to this rate for smoother motion. Defaults to --fps (no upsampling)."
@@ -576,7 +581,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     )
     g.add_argument("--num_execute_actions", type=int, default=8,
                    help="Number of actions from the 15-step chunk to execute before re-planning.")
-    g.add_argument("--max_steps", type=int, default=20,
+    g.add_argument("--max_steps", type=int, default=40,
                    help="Maximum number of model inference calls (episode length).")
     g.add_argument(
         "--stop_denoising_step", type=int, default=20,
@@ -666,6 +671,7 @@ def main() -> None:
         camera_index=args.camera_index,
         camera_key=args.camera_key,
         fps=args.fps,
+        robot_id=args.robot_id,
     )
 
     try:
