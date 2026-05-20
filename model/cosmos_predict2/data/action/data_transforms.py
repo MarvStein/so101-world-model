@@ -47,6 +47,20 @@ class DataTransform(abc.ABC):
     @abc.abstractmethod
     def ignore_for_normalization(self) -> bool:
         raise NotImplementedError
+    
+
+class RandomLanguageEmbedding(DataTransform):
+    def call(self, targets: list[tuple[str, np.ndarray]]) -> Iterator[tuple[str, np.ndarray]]:
+        _, value = targets[np.random.randint(len(targets))]
+        yield "obs/language_embedding", value
+
+    @property
+    def remove_original(self) -> bool:
+        return True
+    
+    @property
+    def ignore_for_normalization(self) -> bool:
+        return True
 
 
 class DeconstructPoseMat(DataTransform):

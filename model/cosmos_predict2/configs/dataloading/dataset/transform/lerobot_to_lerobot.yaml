@@ -18,4 +18,7 @@ data_transforms:
     targets: ${policy_io.concat_groups.obs/lowdim_concat}
     out_key: "obs/lowdim_concat"
 
+  - name: RandomLanguageEmbedding
+    targets: ["obs/language_embedding"]
+
 source_component_names: {}

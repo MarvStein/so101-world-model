@@ -33,6 +33,12 @@ policy_io:
       target_repr: null
       target_frequency: null
       shift_right_by: 0
+    language_embedding_generic:
+      horizon: 1
+      normalization_type: ${NormalizationType:NONE}
+      target_repr: null
+      target_frequency: null
+      shift_right_by: 0
 
 
 concat_groups:
