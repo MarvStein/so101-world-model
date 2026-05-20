@@ -20,6 +20,7 @@ from megatron.core import parallel_state
 from omegaconf import MISSING
 
 from cosmos_predict2.callbacks.video_eval import VideoEvalCallback
+from cosmos_predict2.callbacks.wandb_logger import WandbLogger
 from cosmos_predict2.configs.defaults.data_video import train_datasets
 from imaginaire.lazy_config import LazyCall as L
 
@@ -133,6 +134,7 @@ so101_cfg["model"]["config"].update(dict(
     lora_target_modules="q_proj,k_proj,v_proj,output_proj,x_embedder.proj.1,linear_1,linear_2,mlp.layer1,mlp.layer2",
 ))
 so101_cfg["trainer"]["callbacks"]["video_eval"]["fuse_lora"] = True
+so101_cfg["trainer"]["callbacks"]["wandb_logger"] = L(WandbLogger)(every_n=20, project="wm-so101", name="v2w_lerobot_so101_bs4_lr1e-4_rank256")
 so101_cfg["checkpoint"] = {"save_iter": 1000}
 
 cs.store(
