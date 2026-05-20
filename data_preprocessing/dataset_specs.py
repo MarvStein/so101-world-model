@@ -4,10 +4,9 @@
 # Extend this list to add more datasets; re-run both preprocessing scripts afterwards.
 
 DATASET_SPECS: list[tuple[str, int]] = [
-    ("klucny/rl_eth", 1),
-    ("klucny/rl_eth_task2", 2),
-    ("klucny/rl_eth_task1_blue_cube", 12),
-    ("klucny/rl_eth_task1_red_cube", 13),
-    ("klucny/rl_eth_task2_blue_cube", 22),
-    ("klucny/rl_eth_task2_red_cube", 23),
+    ("klucny/rl_eth", 50),
+    ("klucny/rl_eth_task1_red_cube", 20),
+    ("klucny/rl_eth_task2", 51),
+    ("klucny/rl_eth_task2_blue_cube", 12),
+    ("klucny/task_1_random_start", 17),
 ]

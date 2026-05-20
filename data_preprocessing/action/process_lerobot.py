@@ -37,9 +37,10 @@ VIDEO_TARGET_H = SO101_VIDEO_CONFIG.target_h
 VIDEO_TARGET_W = SO101_VIDEO_CONFIG.target_w
 
 
-def episode_task_text(task_id: int) -> str:
-    txt_path = REPO_ROOT / f"description_task{task_id}.txt"
-    return txt_path.read_text(encoding="utf-8").strip()
+def episode_task_text(ep_idx: int) -> tuple[str, str]:
+    txt_path = REPO_ROOT / f"data/prompts/episode_{ep_idx:03d}.txt"
+    txt_path_generic = REPO_ROOT / f"data/generic_prompts/episode_{ep_idx:03d}.txt"
+    return txt_path.read_text(encoding="utf-8").strip(), txt_path_generic.read_text(encoding="utf-8").strip()
 
 
 def extract_task_id(ep: pd.Series) -> int | None:
@@ -140,7 +141,8 @@ def make_zarr(
     raw_dir,
     output_dir,
     ep,
-    default_lang="",
+    lang="",
+    generic_lang="",
     convert_degrees_to_radians=True,
     output_episode_idx: int | None = None,
     dataset_tag: str = "",
@@ -259,25 +261,11 @@ def make_zarr(
     out_path = output_dir / "lerobot" / f"episode_{out_ep_idx:03d}.zarr"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    lang = default_lang
-    if not lang:
-        task_id = extract_task_id(ep)
-        if task_id is not None:
-            try:
-                lang = episode_task_text(task_id)
-            except FileNotFoundError:
-                logging.warning(
-                    "No description file found for task%d at %s. Falling back to --default-lang.",
-                    task_id,
-                    REPO_ROOT / f"description_task{task_id}.txt",
-                )
-
     t_img = min(65, timestamps_ns.shape[0])
     t_ld = min(1024, timestamps_ns.shape[0])
 
     root: zarr.Group
     with zarr.open(str(out_path), mode="w") as root:
-        root.attrs["dataset_tag"] = dataset_tag
         root.create_dataset(
             "workspace_rgb",
             shape=images.shape,
@@ -338,6 +326,14 @@ def make_zarr(
         )
         root["language_instruction"][...] = np.array([lang.encode("utf-8")])
         root.create_dataset(
+            "language_instruction_generic",
+            shape=(1,),
+            dtype=bytes,
+            chunks=(1,),
+            compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
+        )
+        root["language_instruction"][...] = np.array([generic_lang.encode("utf-8")])
+        root.create_dataset(
             "language_instruction_timestamps",
             shape=(1,),
             dtype="uint64",
@@ -384,37 +380,28 @@ def main():
         return
 
     episode_offset = 0
-    for repo_id, task_id in DATASET_SPECS:
+    for repo_id, number_episodes in DATASET_SPECS:
         print(f"Downloading {repo_id} from HuggingFace Hub...")
         local_dir = snapshot_download(repo_id=repo_id, repo_type="dataset")
         print(local_dir)
         raw_dir = pathlib.Path(local_dir)
 
-        episodes_df = read_episodes_df(raw_dir)
+        episodes_df = read_episodes_df(raw_dir).head(number_episodes)
         print(f"Found {len(episodes_df)} episodes in {repo_id}.")
 
-        try:
-            task_lang = episode_task_text(task_id)
-        except FileNotFoundError:
-            task_lang = args.default_lang
-            logging.warning(
-                "No description file found for task%d at %s. Falling back to --default-lang.",
-                task_id,
-                REPO_ROOT / f"description_task{task_id}.txt",
-            )
-        
-        tag = f"task{task_id}"
         for _, ep in episodes_df.iterrows():
             source_ep_idx = int(ep["episode_index"])
             out_ep_idx = source_ep_idx + episode_offset
             print(f"{repo_id}: source_episode={source_ep_idx} -> output_episode={out_ep_idx}")
+            task_lang, task_lang_generic = episode_task_text(out_ep_idx)
+
             make_zarr(
                 raw_dir,
                 args.output_dir,
                 ep,
-                default_lang=task_lang,
+                lang=task_lang,
+                generic_lang=task_lang_generic,
                 output_episode_idx=out_ep_idx,
-                dataset_tag=tag,
             )
             
         episode_offset += len(episodes_df)
