@@ -15,8 +15,12 @@ def add_t5(path: pathlib.Path, encoder: CosmosT5TextEncoder, embedding: np.ndarr
     with zarr.open(str(path), "r+") as root:
         if embedding is None:
             prompt = root["language_instruction"][0].decode("utf-8")
+            generic_prompt = root["language_instruction_generic"][0].decode("utf-8")
             embedding = (
                 encoder.encode_prompts(prompt, max_length=512, return_mask=False).cpu().numpy().astype(np.float16)
+            )
+            generic_embedding = (
+                encoder.encode_prompts(generic_prompt, max_length=512, return_mask=False).cpu().numpy().astype(np.float16)
             )
 
         root.create_dataset(
@@ -35,9 +39,27 @@ def add_t5(path: pathlib.Path, encoder: CosmosT5TextEncoder, embedding: np.ndarr
             compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
             overwrite=True,
         )
+        root.create_dataset(
+            "language_embedding_generic",
+            shape=(1, 512, 1024),
+            dtype="float16",
+            chunks=(1, 512, 1024),
+            compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
+            overwrite=True,
+        )
+        root.create_dataset(
+            "language_embedding_generic_timestamps",
+            shape=(1,),
+            dtype="uint64",
+            chunks=(1,),
+            compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
+            overwrite=True,
+        )
 
         root["language_embedding"][:] = embedding
         root["language_embedding_timestamps"][:] = np.array([0], dtype=np.uint64)
+        root["language_embedding_generic"][:] = generic_embedding
+        root["language_embedding_generic_timestamps"][:] = np.array([0], dtype=np.uint64)
 
 
 def main():
