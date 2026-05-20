@@ -49,7 +49,7 @@ BASE: dict = dict(
         cpu_offloading_activations=False,
         cpu_offloading_weights=False,
     ),
-    checkpoint=dict(save_iter=250),
+    checkpoint=dict(save_iter=100),
     trainer=dict(
         distributed_parallelism="ddp",
         grad_accum_iter=1,
