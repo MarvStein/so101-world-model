@@ -7,13 +7,13 @@ policy_io:
       normalization_type: ${NormalizationType:NONE}
       target_repr: null
       target_frequency: 10
-      shift_right_by: 0.2
+      shift_right_by: 0.1
     joint_action_lowdim:
       horizon: 15
       normalization_type: ${NormalizationType:VARIANCE}
       target_repr: ${LieRepr:ABSOLUTE}
       target_frequency: 10
-      shift_right_by: 0.2
+      shift_right_by: 0.1
   obs:
     workspace_rgb:
       horizon: 5
