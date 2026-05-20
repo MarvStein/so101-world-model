@@ -18,6 +18,12 @@ data_components:
   language_embedding:
     obs_type: ${ObsType:LANGUAGE_EMBEDDING}
     repr: null
+  language_instruction_generic:
+    obs_type: ${ObsType:LANGUAGE}
+    repr: null
+  language_embedding_generic:
+    obs_type: ${ObsType:LANGUAGE_EMBEDDING}
+    repr: null
 
 dataset:
   _target_: cosmos_predict2.data.action.dataset_action.MimicDataset
@@ -31,4 +37,4 @@ dataset:
   should_include_padded_tails: True
   seed: 42
   num_val_episodes: 10
-  tags: [task1, task12, task13]  # list of dataset_tag strings to include (e.g. [task1, task12]); null = all episodes
+  tags: null  # list of dataset_tag strings to include (e.g. [task1, task12]); null = all episodes
