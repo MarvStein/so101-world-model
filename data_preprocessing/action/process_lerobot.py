@@ -332,7 +332,7 @@ def make_zarr(
             chunks=(1,),
             compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
         )
-        root["language_instruction"][...] = np.array([generic_lang.encode("utf-8")])
+        root["language_instruction_generic"][...] = np.array([generic_lang.encode("utf-8")])
         root.create_dataset(
             "language_instruction_timestamps",
             shape=(1,),
@@ -341,6 +341,14 @@ def make_zarr(
             compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
         )
         root["language_instruction_timestamps"][...] = np.array([0], dtype=np.uint64)
+        root.create_dataset(
+            "language_instruction_generic_timestamps",
+            shape=(1,),
+            dtype="uint64",
+            chunks=(1,),
+            compressor=Blosc(cname="lz4", clevel=1, shuffle=Blosc.BITSHUFFLE),
+        )
+        root["language_instruction_generic_timestamps"][...] = np.array([0], dtype=np.uint64)
 
 
 
@@ -372,12 +380,12 @@ def main():
     #make a dir inside output dirr called "lerobot" if it doesn't exist
     (args.output_dir / "lerobot").mkdir(parents=True, exist_ok=True)
     
-    if args.raw_dir is not None:
-        episodes_df = read_episodes_df(args.raw_dir)
-        for _, ep in episodes_df.iterrows():
-            print(ep["episode_index"])
-            make_zarr(args.raw_dir, args.output_dir, ep, default_lang=args.default_lang, dataset_tag=args.tag)
-        return
+    # if args.raw_dir is not None:
+    #     episodes_df = read_episodes_df(args.raw_dir)
+    #     for _, ep in episodes_df.iterrows():
+    #         print(ep["episode_index"])
+    #         make_zarr(args.raw_dir, args.output_dir, ep, default_lang=args.default_lang, dataset_tag=args.tag)
+    #     return
 
     episode_offset = 0
     for repo_id, number_episodes in DATASET_SPECS:
