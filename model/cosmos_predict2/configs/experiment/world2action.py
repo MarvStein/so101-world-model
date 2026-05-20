@@ -36,9 +36,9 @@ BASE: dict = dict(
     ),
     scheduler=dict(
         f_max=[1],
-        f_min=[0.2],
-        warm_up_steps=[1_000],
-        cycle_lengths=[500_000],
+        f_min=[0.1],
+        warm_up_steps=[500],
+        cycle_lengths=[50_000],
     ),
     job=dict(
         project="vam",
