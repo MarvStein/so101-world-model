@@ -7,7 +7,7 @@ Each episode becomes:
 
 The script handles the v3 layout where many episodes are concatenated into a
 single MP4 shard.  Per-episode start/end are read from the episode metadata
-fields `videos/.../from_timestamp` and `videos/.../to_timestamp`.
+fields `videos/.../from_frame_index` and `videos/.../to_frame_index`.
 
 Usage:
 python data_preprocessing/video/process_lerobot_video.py
@@ -17,8 +17,11 @@ from __future__ import annotations
 from huggingface_hub import snapshot_download
 
 import pathlib
-import subprocess
 import imageio_ffmpeg
+import decord
+import torch
+import torchvision.transforms.functional as TF
+from torchvision.transforms import InterpolationMode
 
 import pandas as pd
 from tqdm.auto import tqdm
@@ -26,6 +29,8 @@ from tqdm.auto import tqdm
 REPO_ROOT = pathlib.Path(__file__).parents[2]
 
 VIDEO_KEY = "observation.images.front"
+
+_vr_cache: dict[str, decord.VideoReader] = {}
 
 
 def read_episodes_df(raw_dir: pathlib.Path) -> pd.DataFrame:
@@ -36,35 +41,45 @@ def read_episodes_df(raw_dir: pathlib.Path) -> pd.DataFrame:
     return pd.concat(dfs, ignore_index=True).sort_values("episode_index").reset_index(drop=True)
 
 
+OUT_W, OUT_H = 640, 480
+OUT_FPS = 10
+
+
 def extract_episode(
     src: pathlib.Path,
     dst: pathlib.Path,
-    from_ts: float,
-    to_ts: float,
+    from_frame: int,
+    to_frame: int,
 ) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
 
-    # Add one frame's worth of duration so the last frame is included
-    duration = to_ts - from_ts + 1.0 / 10
+    key = str(src)
+    if key not in _vr_cache:
+        _vr_cache[key] = decord.VideoReader(key, ctx=decord.cpu(0))
+    vr = _vr_cache[key]
 
-    # -ss before -i for fast keyframe seek; -t is relative to that seek point
-    cmd = [
-        imageio_ffmpeg.get_ffmpeg_exe(), "-y",
-        "-ss", str(from_ts),
-        "-i", str(src),
-        "-t", str(duration),
-        "-vf", "crop=1268:951:326:0,fps=10",
-        "-c:v", "libx264",
-        "-crf", "18",
-        "-pix_fmt", "yuv420p",
+    to_frame = min(to_frame, len(vr))
+    frames = vr.get_batch(list(range(from_frame, to_frame))).asnumpy()  # (N, H, W, 3)
+
+    t = torch.from_numpy(frames).permute(0, 3, 1, 2)  # (N, 3, H, W)
+    t = TF.center_crop(t, (1080, 1440))  # largest 4:3 rect fitting in 1920x1080
+    t = TF.resize(t, (OUT_H, OUT_W), interpolation=InterpolationMode.BILINEAR, antialias=True)
+    frames = t.permute(0, 2, 3, 1).numpy()             # (N, H, W, 3)
+
+    writer = imageio_ffmpeg.write_frames(
         str(dst),
-    ]
-    result = subprocess.run(cmd, capture_output=True)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"ffmpeg failed for episode (src={src}, from={from_ts}, to={to_ts}):\n"
-            + result.stderr.decode(errors="replace")
-        )
+        size=(OUT_W, OUT_H),
+        fps=OUT_FPS,
+        codec="libx264",
+        pix_fmt_in="rgb24",
+        pix_fmt_out="yuv420p",
+        macro_block_size=1,
+        output_params=["-crf", "18"],
+    )
+    writer.send(None)
+    for frame in frames:
+        writer.send(frame.tobytes())
+    writer.close()
 
 
 def main() -> None:
@@ -82,8 +97,8 @@ def main() -> None:
         ep_idx = int(ep["episode_index"])
         chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
         file_idx = int(ep[f"videos/{VIDEO_KEY}/file_index"])
-        from_ts = float(ep[f"videos/{VIDEO_KEY}/from_timestamp"])
-        to_ts = float(ep[f"videos/{VIDEO_KEY}/to_timestamp"])
+        from_frame = int(ep["dataset_from_index"])
+        to_frame = int(ep["dataset_to_index"])
 
         src_video = (
             raw_dir0
@@ -97,8 +112,8 @@ def main() -> None:
         extract_episode(
             src_video,
             dst_video,
-            from_ts,
-            to_ts,
+            from_frame,
+            to_frame,
         )
 
 
@@ -113,8 +128,8 @@ def main() -> None:
         ep_idx = int(ep["episode_index"])+len(episodes_df0)
         chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
         file_idx = int(ep[f"videos/{VIDEO_KEY}/file_index"])
-        from_ts = float(ep[f"videos/{VIDEO_KEY}/from_timestamp"])
-        to_ts = float(ep[f"videos/{VIDEO_KEY}/to_timestamp"])
+        from_frame = int(ep["dataset_from_index"])
+        to_frame = int(ep["dataset_to_index"])
 
         src_video = (
             raw_dir1
@@ -128,8 +143,8 @@ def main() -> None:
         extract_episode(
             src_video,
             dst_video,
-            from_ts,
-            to_ts,
+            from_frame,
+            to_frame,
         )
 
     """
@@ -144,8 +159,8 @@ def main() -> None:
         ep_idx = int(ep["episode_index"])+len(episodes_df0)+len(episodes_df1)
         chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
         file_idx = int(ep[f"videos/{VIDEO_KEY}/file_index"])
-        from_ts = float(ep[f"videos/{VIDEO_KEY}/from_timestamp"])
-        to_ts = float(ep[f"videos/{VIDEO_KEY}/to_timestamp"])
+        from_frame = int(ep["dataset_from_index"])
+        to_frame = int(ep["dataset_to_index"])
 
         src_video = (
             raw_dir2
@@ -159,8 +174,8 @@ def main() -> None:
         extract_episode(
             src_video,
             dst_video,
-            from_ts,
-            to_ts,
+            from_frame,
+            to_frame,
         )
     """
 
@@ -175,8 +190,8 @@ def main() -> None:
         ep_idx = int(ep["episode_index"])+len(episodes_df0)+len(episodes_df1)#+len(episodes_df2)
         chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
         file_idx = int(ep[f"videos/{VIDEO_KEY}/file_index"])
-        from_ts = float(ep[f"videos/{VIDEO_KEY}/from_timestamp"])
-        to_ts = float(ep[f"videos/{VIDEO_KEY}/to_timestamp"])
+        from_frame = int(ep["dataset_from_index"])
+        to_frame = int(ep["dataset_to_index"])
 
         src_video = (
             raw_dir3
@@ -190,8 +205,8 @@ def main() -> None:
         extract_episode(
             src_video,
             dst_video,
-            from_ts,
-            to_ts,
+            from_frame,
+            to_frame,
         )
 
     """
@@ -206,8 +221,8 @@ def main() -> None:
         ep_idx = int(ep["episode_index"])+len(episodes_df0)+len(episodes_df1)+len(episodes_df2)+len(episodes_df3)
         chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
         file_idx = int(ep[f"videos/{VIDEO_KEY}/file_index"])
-        from_ts = float(ep[f"videos/{VIDEO_KEY}/from_timestamp"])
-        to_ts = float(ep[f"videos/{VIDEO_KEY}/to_timestamp"])
+        from_frame = int(ep["dataset_from_index"])
+        to_frame = int(ep["dataset_to_index"])
 
         src_video = (
             raw_dir4
@@ -221,8 +236,8 @@ def main() -> None:
         extract_episode(
             src_video,
             dst_video,
-            from_ts,
-            to_ts,
+            from_frame,
+            to_frame,
         )
     """
 
@@ -238,8 +253,8 @@ def main() -> None:
         ep_idx = int(ep["episode_index"])+len(episodes_df0)+len(episodes_df1)+len(episodes_df3)#+len(episodes_df2)+len(episodes_df4)
         chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
         file_idx = int(ep[f"videos/{VIDEO_KEY}/file_index"])
-        from_ts = float(ep[f"videos/{VIDEO_KEY}/from_timestamp"])
-        to_ts = float(ep[f"videos/{VIDEO_KEY}/to_timestamp"])
+        from_frame = int(ep["dataset_from_index"])
+        to_frame = int(ep["dataset_to_index"])
 
         src_video = (
             raw_dir5
@@ -253,8 +268,8 @@ def main() -> None:
         extract_episode(
             src_video,
             dst_video,
-            from_ts,
-            to_ts,
+            from_frame,
+            to_frame,
         )
 
     print(f"Downloading klucny/task_1_random_start from HuggingFace Hub...")
@@ -268,8 +283,8 @@ def main() -> None:
         ep_idx = int(ep["episode_index"])+len(episodes_df0)+len(episodes_df1)+len(episodes_df3)+len(episodes_df5)#+len(episodes_df2)+len(episodes_df4)
         chunk_idx = int(ep[f"videos/{VIDEO_KEY}/chunk_index"])
         file_idx = int(ep[f"videos/{VIDEO_KEY}/file_index"])
-        from_ts = float(ep[f"videos/{VIDEO_KEY}/from_timestamp"])
-        to_ts = float(ep[f"videos/{VIDEO_KEY}/to_timestamp"])
+        from_frame = int(ep["dataset_from_index"])
+        to_frame = int(ep["dataset_to_index"])
 
         src_video = (
             raw_dir6
@@ -283,8 +298,8 @@ def main() -> None:
         extract_episode(
             src_video,
             dst_video,
-            from_ts,
-            to_ts,
+            from_frame,
+            to_frame,
         )
 
 
