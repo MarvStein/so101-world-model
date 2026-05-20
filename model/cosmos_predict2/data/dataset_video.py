@@ -78,6 +78,7 @@ class Dataset(_Dataset):
 
         video_dir = os.path.join(self.dataset_dir, "video")
         self.t5_dir = os.path.join(self.dataset_dir, "t5_xxl")
+        self.t5_generic_dir = os.path.join(self.dataset_dir, "t5_xxl_generic")
 
         video_paths = sorted(
             [
@@ -169,14 +170,24 @@ class Dataset(_Dataset):
             data = dict()
             video, fps = self._get_frames(self.video_paths[index])
             video_path = self.video_paths[index]
-            t5_embedding_path = os.path.join(
-                self.t5_dir,
-                (
-                    os.path.basename(video_path).removesuffix(".mp4")[:-1] + ".pickle"
-                    if self.is_multi_img
-                    else os.path.basename(video_path)
-                ).replace(".mp4", ".pickle"),
-            )
+            if self.rng.random() < 0.5:
+                t5_embedding_path = os.path.join(
+                    self.t5_dir,
+                    (
+                        os.path.basename(video_path).removesuffix(".mp4")[:-1] + ".pickle"
+                        if self.is_multi_img
+                        else os.path.basename(video_path)
+                    ).replace(".mp4", ".pickle"),
+                )
+            else:
+                t5_embedding_path = os.path.join(
+                    self.t5_generic_dir,
+                    (
+                        os.path.basename(video_path).removesuffix(".mp4")[:-1] + ".pickle"
+                        if self.is_multi_img
+                        else os.path.basename(video_path)
+                    ).replace(".mp4", ".pickle"),
+                )
             data["video"] = video
             data["video_name"] = {
                 "video_path": video_path,

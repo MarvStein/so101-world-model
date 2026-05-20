@@ -46,10 +46,14 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
     metas_dir = os.path.join(args.dataset_path, "metas")
+    metas_generic_dir = os.path.join(args.dataset_path, "metas_generic")
     metas_list = sorted(map(str, pathlib.Path(metas_dir).glob("*.txt")))[args.rank :: args.world_size]
+    metas_generic_list = sorted(map(str, pathlib.Path(metas_generic_dir).glob("*.txt")))[args.rank :: args.world_size]
 
     t5_xxl_dir = os.path.join(args.dataset_path, "t5_xxl")
+    t5_xxl_generic_dir = os.path.join(args.dataset_path, "t5_xxl_generic")
     os.makedirs(t5_xxl_dir, exist_ok=True)
+    os.makedirs(t5_xxl_generic_dir, exist_ok=True)
 
     encoder_config = CosmosT5TextEncoderConfig(ckpt_path=args.cache_dir)
     encoder = CosmosT5TextEncoder(config=encoder_config)
@@ -74,6 +78,28 @@ def main(args: argparse.Namespace) -> None:
         encoded_text = [encoded_text[batch_id][: lengths[batch_id]] for batch_id in range(encoded_text.shape[0])]
 
         with open(t5_xxl_filename, "wb") as fp:
+            pickle.dump(encoded_text, fp)
+
+    for meta_filename in tqdm.tqdm(metas_generic_list, total=len(metas_generic_list), desc="computing t5 embeddings"):
+        t5_xxl_generic_filename = os.path.join(t5_xxl_generic_dir, os.path.basename(meta_filename).replace(".txt", ".pickle"))
+        if os.path.exists(t5_xxl_generic_filename):
+            continue
+
+        with open(meta_filename) as fp:
+            generic_prompt = fp.read().strip()
+
+        encoded_text, mask_bool = encoder.encode_prompts(
+            generic_prompt, max_length=args.max_length, return_mask=True
+        )  # list of np.ndarray in (len, embed_dim)
+        attn_mask = mask_bool.long()
+        lengths = attn_mask.sum(dim=1).cpu()
+
+        encoded_text = encoded_text.cpu().numpy().astype(np.float16)
+
+        # trim zeros to save space
+        encoded_text = [encoded_text[batch_id][: lengths[batch_id]] for batch_id in range(encoded_text.shape[0])]
+
+        with open(t5_xxl_generic_filename, "wb") as fp:
             pickle.dump(encoded_text, fp)
 
 
