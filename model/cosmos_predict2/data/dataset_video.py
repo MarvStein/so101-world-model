@@ -130,7 +130,7 @@ class Dataset(_Dataset):
             raise ValueError(f"Empty video: {video_path}")
 
         fps = self.data_fps or vr.get_avg_fps()
-        step = fps / 5.0
+        step = fps / 10.0
 
         i = self.rng.integers(0, n + step * (self.obs_history - 1))  # ty:ignore[no-matching-overload]
 
