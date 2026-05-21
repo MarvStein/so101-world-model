@@ -85,7 +85,7 @@ from cosmos_predict2.pipelines.world2action import World2ActionPipeline
 from imaginaire.lazy_config import instantiate
 from imaginaire.utils.config_helper import override
 
-DEFAULT_EXPERIMENT = "w2a_lerobot_v2w_11k_lr1e-04_bs8_task1"
+DEFAULT_EXPERIMENT = "w2a_lerobot_v2w_5_5k_lr1e-04_bs32_ga4"
 
 logger = logging.getLogger(__name__)
 
