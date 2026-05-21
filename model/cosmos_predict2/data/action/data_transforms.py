@@ -50,7 +50,7 @@ class DataTransform(abc.ABC):
     
 
 class RandomLanguageEmbedding(DataTransform):
-    def call(self, targets: list[tuple[str, np.ndarray]]) -> Iterator[tuple[str, np.ndarray]]:
+    def __call__(self, targets: list[tuple[str, np.ndarray]]) -> Iterator[tuple[str, np.ndarray]]:
         _, value = targets[np.random.randint(len(targets))]
         yield "obs/language_embedding", value
 

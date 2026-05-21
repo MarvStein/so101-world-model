@@ -254,7 +254,7 @@ Run:
 deactivate
 cd model
 source .venv/bin/activate
-torchrun --nproc_per_node=2 -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment="v2w_lerobot-so101_bs4_10fps"
+torchrun --nproc_per_node=2 -m scripts.train --config=cosmos_predict2/configs/config.py -- experiment="w2a_lerobot_v2w_5_5k_lr1e-04_bs128"
 ```
 
 # BACKLOG
