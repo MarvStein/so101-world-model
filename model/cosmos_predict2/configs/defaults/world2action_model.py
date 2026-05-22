@@ -52,6 +52,7 @@ NON_FINETUNED: dict = {
             ),
             pipe_config="${world2action_pipe}",
             video_pipe_config=get_cosmos_predict2_video2world_pipeline(model_size="2B", resolution="480", fps=10),
+            use_precomputed_latents=False,
             fsdp_shard_size=0,
             data_config="${data_config}",
         )
@@ -59,6 +60,7 @@ NON_FINETUNED: dict = {
 }
 
 VIDEO_MODEL_CKPT_NAMES = [
+    "iter_000005500_fused", # TODO: adapt this checkpoint to final finetuned checkpoint and copy it to the video_backbone dir
     "v2w_pretrained_cosmos",
     "v2w_bridge_lora_rank256_lr1.778e-04_bsz64_iter_000070043_fused",
     "v2w_libero_goal_agentview_lora_rank256_lr1.778e-04_bsz32_iter_000007020_fused",

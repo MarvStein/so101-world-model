@@ -256,12 +256,29 @@ class ChunkReader:
 
         return values
 
-    def read_chunk(self, idx: int) -> dict:
+    @property
+    def episodes(self) -> list[tuple[Path, int]]:
+        """Return (episode_path, n_valid_steps) for every episode in this split."""
+        return list(zip(self._episode_paths, self._num_timesteps, strict=True))
+
+    def resolve(self, idx: int) -> tuple[Path, int]:
+        """Decompose a global dataset index into (episode_path, step_idx)."""
+        episode_idx = bisect.bisect_right(self._cumulative_num_timesteps, idx) - 1
+        step_idx = idx - self._cumulative_num_timesteps[episode_idx]
+        return self._episode_paths[episode_idx], step_idx
+
+    def read_chunk(self, idx: int, extra_step_keys: list[str] | None = None) -> dict:
         """Load a chunk of data from storage and convert it to a unified format.
 
         This function is only responsible for returning any data that might end up in the batch. This includes
         interpolation to select the correct data at the requested timestamps.
         Any postprocessing of items or subsampling of keys, etc. is done in the dataset.
+
+        Args:
+            idx: Global dataset index.
+            extra_step_keys: Optional list of zarr array names to read directly from the
+                episode zarr at ``step_idx`` (e.g. ``["precomputed_video_latents"]``).
+                Each key that exists in the root is added to the returned dict as-is.
         """
         episode_idx = bisect.bisect_right(self._cumulative_num_timesteps, idx) - 1
         step_idx = idx - self._cumulative_num_timesteps[episode_idx]
@@ -270,7 +287,7 @@ class ChunkReader:
         progress = step_idx / self._num_timesteps[episode_idx]
 
         with zarr.open(self._episode_paths[episode_idx], "r") as root:
-            return {
+            data = {
                 key: vals
                 for key, meta in self._data_components.items()
                 if (
@@ -280,3 +297,8 @@ class ChunkReader:
                 )
                 is not None
             }
+            if extra_step_keys:
+                for key in extra_step_keys:
+                    if key in root:
+                        data[key] = root[key][step_idx]
+            return data

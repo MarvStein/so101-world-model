@@ -68,6 +68,8 @@ class World2ActionModelConfig:
     fsdp_shard_size: int  # 0 means not using fsdp, -1 means set to world size
     data_config: DictConfig
 
+    use_precomputed_latents: bool = False
+
 
 def _dp_mean(x: torch.Tensor) -> torch.Tensor:
     if dist.is_available() and dist.is_initialized():
@@ -120,6 +122,10 @@ class World2ActionModel(ImaginaireModel):
             self.video_noise_multiplier = math.sqrt(config.video_pipe_config.state_t)
         else:
             self.video_noise_multiplier = 1.0
+
+        self.use_precomputed_latents = config.use_precomputed_latents
+        if self.use_precomputed_latents:
+            log.info("Using precomputed video latents when they are present in the batch.")
 
         self.freeze_parameters()
         if config.train_architecture == "lora":
@@ -336,7 +342,11 @@ class World2ActionModel(ImaginaireModel):
         data_batch: dict,
         video_sigma_B_1: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        _, video_B_C_T_H_W, condition = self.video2world_pipe.get_mimic_data_and_condition(data_batch)
+        video_B_C_T_H_W = self._get_video_latent_state(data_batch)
+        if video_B_C_T_H_W is None:
+            _, video_B_C_T_H_W, condition = self.video2world_pipe.get_mimic_data_and_condition(data_batch)
+        else:
+            condition = self._build_video_condition(data_batch, video_B_C_T_H_W)
 
         video_epsilon_B_C_T_H_W = torch.randn(video_B_C_T_H_W.size(), **self.tensor_kwargs)
 
@@ -388,6 +398,36 @@ class World2ActionModel(ImaginaireModel):
             )
             sigma_B_1 = torch.where(mask, log_new_sigma.exp(), sigma_B_1)
         return sigma_B_1
+
+    def _build_video_condition(self, data_batch: dict, latent_state: torch.Tensor):
+        B, *_, H, W = latent_state.shape
+        data_batch["padding_mask"] = torch.zeros(B, 1, H, W, **self.tensor_kwargs)
+        data_batch["fps"] = torch.full((B, 1), 5)
+
+        condition = self.video2world_pipe.conditioner(data_batch)
+        condition = condition.edit_data_type(DataType.VIDEO)
+        condition = condition.set_video_condition(
+            gt_frames=latent_state.to(**self.tensor_kwargs),
+            random_min_num_conditional_frames=self.video2world_pipe.config.min_num_conditional_frames,
+            random_max_num_conditional_frames=self.video2world_pipe.config.max_num_conditional_frames,
+            num_conditional_frames=self.video2world_pipe.tokenizer.get_latent_num_frames(
+                data_batch["obs/workspace_rgb"].shape[2]
+            ),
+        )
+        return condition
+
+    def _get_video_latent_state(self, data_batch: dict) -> torch.Tensor | None:
+        if not self.use_precomputed_latents:
+            return None
+
+        latent_state = data_batch.get("precomputed_video_latents")
+        if latent_state is None:
+            return None
+
+        if not torch.is_tensor(latent_state):
+            latent_state = torch.as_tensor(latent_state)
+
+        return latent_state.contiguous().float()
 
     def training_step(self, data_batch: dict, iteration: int) -> tuple[dict, torch.Tensor]:
         data_batch["obs/language_embedding"] = data_batch["obs/language_embedding"].squeeze(1)

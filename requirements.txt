@@ -1,0 +1,3 @@
+lerobot[feetech]
+zarr
+pyzmq

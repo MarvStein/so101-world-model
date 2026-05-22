@@ -12,17 +12,23 @@ data_components:
   joint_action_lowdim:
     obs_type: ${ObsType:JOINT_POS}
     repr: ${LieRepr:ABSOLUTE}
-  # language_instruction:
-  #   obs_type: ${ObsType:LANGUAGE}
-  #   repr: null
-  # language_embedding:
-  #   obs_type: ${ObsType:LANGUAGE_EMBEDDING}
-  #   repr: null
+  language_instruction:
+    obs_type: ${ObsType:LANGUAGE}
+    repr: null
+  language_embedding:
+    obs_type: ${ObsType:LANGUAGE_EMBEDDING}
+    repr: null
+  language_instruction_generic:
+    obs_type: ${ObsType:LANGUAGE}
+    repr: null
+  language_embedding_generic:
+    obs_type: ${ObsType:LANGUAGE_EMBEDDING}
+    repr: null
 
 dataset:
   _target_: cosmos_predict2.data.action.dataset_action.MimicDataset
   _convert_: partial
-  data_dir: /Users/dragos/ETH/FS2026/RL/robot-learning-fs26/data/lerobot
+  data_dir: /home/shadeform/projects/so101-world-model/data/action/lerobot # TODO adapt this path
   timestep_anchor: workspace_rgb
   data_components: ${..data_components}
   data_transforms: ${..data_transforms}
@@ -30,4 +36,5 @@ dataset:
   policy_io: ${policy_io.policy_io}
   should_include_padded_tails: True
   seed: 42
-  num_val_episodes: 20
+  num_val_episodes: 1
+  tags: null  # list of dataset_tag strings to include (e.g. [task1, task12]); null = all episodes

@@ -18,8 +18,9 @@ import cosmos_predict2.data.action.types as data_spec
 from cosmos_predict2.data.action import chunk_reader
 from cosmos_predict2.data.action import data_transforms as data_transforms_mod
 from cosmos_predict2.data.action.data_transforms import apply_data_transforms, make_data_transforms
+from cosmos_predict2.data.action.precomputed_latents_utils import PRECOMPUTED_LATENTS_KEY
 from cosmos_predict2.data.action.types import LieRepr, NormalizationType, ObsMeta, ObsType
-from cosmos_predict2.data.action.utils import dict_apply, get_paths
+from cosmos_predict2.data.action.utils import dict_apply, filter_paths_by_tags, get_paths
 from cosmos_predict2.module import normalizer
 from cosmos_predict2.module.normalizer import array_to_stats
 
@@ -39,9 +40,15 @@ class MimicDataset(torch.utils.data.Dataset):
         num_val_episodes: int = 1,
         train: bool = True,
         verbose: bool = False,
+        tags: list[str] | None = None,
     ) -> None:
         self._data_dir = pathlib.Path(data_dir)
+        self._train = train
         self._episode_paths = get_paths(self._data_dir, verbose=verbose)
+        if tags is not None:
+            self._episode_paths = filter_paths_by_tags(
+                self._episode_paths, tags, data_dir=self._data_dir
+            )
 
         def get_source_component(key: str, spec: dict, prefix: str) -> tuple[str, ObsMeta]:
             source_name = source_component_names.get(f"{prefix}/{key}", key)
@@ -165,7 +172,7 @@ class MimicDataset(torch.utils.data.Dataset):
             threadpoolctl.threadpool_limits(1)
             self._threadpool_limits_is_applied = True
 
-        data = self._chunk_reader.read_chunk(idx)
+        data = self._chunk_reader.read_chunk(idx, extra_step_keys=[PRECOMPUTED_LATENTS_KEY])
 
         return apply_data_transforms(
             data,

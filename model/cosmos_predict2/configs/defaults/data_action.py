@@ -7,6 +7,22 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 from torch.utils.data import DataLoader
 
+
+def _blosc_worker_init(worker_id):
+    """Disable Blosc's internal thread pool in forked DataLoader workers.
+
+    Blosc (used by zarr/numcodecs) maintains a C-level thread pool.  When
+    PyTorch forks a worker process the Blosc threads are not re-created in
+    the child, leaving the pool in an undefined state.  Subsequent
+    decompressions can then crash with SIGBUS.  Forcing single-threaded mode
+    (nthreads=1) after the fork avoids this entirely.
+    """
+    try:
+        import numcodecs.blosc as blosc  # noqa: PLC0415
+        blosc.use_threads = False
+    except Exception:
+        pass
+
 from cosmos_predict2.data.action.types import LieRepr, NormalizationType, ObsType
 from cosmos_predict2.data.resumable_sampler import ResumableDistributedSampler
 from cosmos_predict2.module.normalizer import array_to_stats
@@ -101,11 +117,12 @@ def register_training_and_val_action_data():
             seed=0,
         ),
         batch_size=MISSING,
-        prefetch_factor=8,
+        prefetch_factor=4,
         drop_last=True,
-        num_workers=12,
+        num_workers=8,
         pin_memory=True,
         persistent_workers=True,
+        worker_init_fn=_blosc_worker_init,
         in_order=False,
     )
     cs.store(

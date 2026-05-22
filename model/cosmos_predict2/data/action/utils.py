@@ -3,6 +3,8 @@ import pickle
 from collections.abc import Sequence
 from typing import TypeVar
 
+import zarr
+
 from cosmos_predict2.data.action.types import NormalizationType
 
 T = TypeVar("T", bound=float)
@@ -27,6 +29,45 @@ def get_paths(
         pickle.dump(paths, f)
 
     return paths
+
+
+def filter_paths_by_tags(
+    paths: list[pathlib.Path],
+    tags: list[str],
+    *,
+    data_dir: pathlib.Path | None = None,
+) -> list[pathlib.Path]:
+    """Return only those episode paths whose zarr ``dataset_tag`` attribute is in *tags*.
+
+    A tag_map.pkl cache (stored next to paths.pkl in *data_dir*) avoids re-reading
+    zarr attributes on every run.  Pass *data_dir* to enable caching; omit it to
+    always read attrs from disk.
+    """
+    cache_path = (data_dir / "tag_map.pkl") if data_dir is not None else None
+
+    tag_map: dict[str, str] = {}
+    if cache_path is not None:
+        try:
+            with cache_path.open("rb") as f:
+                tag_map = pickle.load(f)
+        except FileNotFoundError:
+            pass
+
+    # Build / extend cache for any paths not yet known.
+    missing = [p for p in paths if str(p) not in tag_map]
+    for p in missing:
+        try:
+            root = zarr.open(str(p), mode="r")
+            tag_map[str(p)] = root.attrs.get("dataset_tag", "")
+        except Exception:
+            tag_map[str(p)] = ""
+
+    if missing and cache_path is not None:
+        with cache_path.open("wb") as f:
+            pickle.dump(tag_map, f)
+
+    tag_set = set(tags)
+    return [p for p in paths if tag_map.get(str(p), "") in tag_set]
 
 
 def dict_apply(x: dict, func) -> dict:

@@ -78,6 +78,7 @@ def make_config() -> Config:
     register_scheduler()
     register_video_model()
     register_action_model()
+    #register_video_model()
     register_pipe()
 
     register_checkpoint()

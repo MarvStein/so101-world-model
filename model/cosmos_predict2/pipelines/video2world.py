@@ -339,6 +339,11 @@ class Video2WorldPipeline(BasePipeline):
             dit_config = config.net
             pipe.dit = instantiate(dit_config).eval()  # inference
 
+        # Move from meta device to the real device (empty, no data) so that
+        # load_state_dict can copy into allocated memory.  Must happen before
+        # load_state_dict because .to() cannot copy out of meta tensors.
+        pipe.dit = pipe.dit.to_empty(device=device)
+
         if dit_path:
             state_dict = load_state_dict(dit_path)
             prefix_to_load = "net_ema." if load_ema_to_reg else "net."
@@ -349,7 +354,7 @@ class Video2WorldPipeline(BasePipeline):
                     state_dict_dit_compatible[k[len(prefix_to_load) :]] = v
                 else:
                     state_dict_dit_compatible[k] = v
-            pipe.dit.load_state_dict(state_dict_dit_compatible, strict=False, assign=True)
+            pipe.dit.load_state_dict(state_dict_dit_compatible, strict=False)
             del state_dict, state_dict_dit_compatible
             log.success(f"Successfully loaded DiT from {dit_path}")
 
@@ -366,7 +371,7 @@ class Video2WorldPipeline(BasePipeline):
             # Actual state_dict should be loaded after the pipe is created.
             pipe.dit_ema_worker.copy_to(src_model=pipe.dit, tgt_model=pipe.dit_ema)
 
-        pipe.dit = pipe.dit.to(device=device, dtype=torch_dtype)
+        pipe.dit = pipe.dit.to(dtype=torch_dtype)
         torch.cuda.empty_cache()
 
         # 7. training states

@@ -1,0 +1,1 @@
+Push the target object, in this case the blue cube, in a straight line to the goal position which is the smaller of the two white circles seen on the left. The target object is not allowed to leave the area bounded by the two parallel straight white lines at anytime.
